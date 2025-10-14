@@ -54,6 +54,7 @@ class MusicRestorationDataModule(pl.LightningDataModule):
         super().__init__()
         self.config = config
         self.train_dataset = None
+        self.val_dataset = None
 
     def setup(self, stage: str | None = None):
         common_params = {
@@ -61,12 +62,20 @@ class MusicRestorationDataModule(pl.LightningDataModule):
             "clip_duration": self.config['clip_duration'],
         }
         self.train_dataset = RawStems(**self.config['train_dataset'], **common_params)
+        self.val_dataset = RawStems(**self.config['val_dataset'], **common_params)
     
     def train_dataloader(self):
         sampler = InfiniteSampler(self.train_dataset)
         return DataLoader(
             self.train_dataset,
             sampler=sampler,
+            **self.config['dataloader_params']
+        )
+        
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            shuffle=False,
             **self.config['dataloader_params']
         )
 
@@ -183,6 +192,73 @@ class MusicRestorationModule(pl.LightningModule):
         
         return [opt_g, opt_d], []
 
+class SimpleMusicRestorationModule(pl.LightningModule):
+    """
+    Simplified PyTorch Lightning module for music source restoration.
+    Uses only direct loss training without any GAN components.
+    """
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__()
+        self.save_hyperparameters(config)
+        
+        # 1. Generator only
+        self.generator = self._init_generator()
+        
+        # 2. Loss functions for direct training
+        self.l1_loss = nn.L1Loss()
+
+    def _init_generator(self):
+        model_cfg = self.hparams.model
+        if model_cfg['name'] == 'MelRNN':
+            return MelRNN.MelRNN(**model_cfg['params'])
+        elif model_cfg['name'] == 'MelRoFormer':
+            return MelRoFormer.MelRoFormer(**model_cfg['params'])
+        elif model_cfg['name'] == 'MelUNet':
+            return UNet.MelUNet(**model_cfg['params'])
+        else:
+            raise ValueError(f"Unknown model name: {model_cfg['name']}")
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.generator(x)
+
+    def common_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
+        target = batch['target']
+        mixture = batch['mixture']
+
+        # reshape both from (b, c, t) to ((b, c) t)
+        target = rearrange(target, 'b c t -> (b c) t')
+        mixture = rearrange(mixture, 'b c t -> (b c) t')
+        
+        # Forward pass
+        generated = self(mixture)
+        loss_l1 = self.l1_loss(generated, target)
+        self.log(f'{mode}/loss_l1', loss_l1)
+        return loss_l1
+    
+    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        return self.common_step(batch, batch_idx, 'train')
+    
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        return self.common_step(batch, batch_idx, 'val')
+
+    def configure_optimizers(self):
+        # Only generator optimizer needed
+        opt_g_cfg = self.hparams.optimizer_g
+        optimizer = torch.optim.AdamW(
+            self.generator.parameters(), 
+            lr=opt_g_cfg['lr'], 
+            betas=tuple(opt_g_cfg['betas'])
+        )
+        
+        # Schedulers
+        if 'warm_up_steps' in self.hparams.scheduler:
+            warmup_steps = self.hparams.scheduler['warm_up_steps']
+            lr_lambda = lambda step: min(1.0, (step + 1) / warmup_steps)
+            scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+            return [optimizer], [scheduler]
+        
+        return optimizer
+
 def main():
     parser = argparse.ArgumentParser(description="Train a Music Source Restoration Model")
     parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
@@ -194,7 +270,7 @@ def main():
     pl.seed_everything(42, workers=True)
 
     data_module = MusicRestorationDataModule(config['data'])
-    model_module = MusicRestorationModule(config)
+    model_module = MusicRestorationModule(config) if 'discriminators' in config else SimpleMusicRestorationModule(config)
 
     exp_name = f"{config['model']['name']}"
     exp_name = exp_name.replace(" ", "_")
@@ -220,6 +296,7 @@ def main():
     # Trainer
     trainer = pl.Trainer(
         logger=logger,
+        limit_train_batches=config['trainer']['limit_train_batches'],
         callbacks=[checkpoint_callback, lr_monitor],
         max_steps=config['trainer']['max_steps'],
         log_every_n_steps=config['trainer']['log_every_n_steps'],

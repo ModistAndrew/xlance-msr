@@ -165,6 +165,8 @@ class RawStems(Dataset):
                 mask = np.zeros(len(rms_values), dtype=bool)
                 mask[:len(avg_loud_enough)] = avg_loud_enough
                 activity_masks[path_str] = mask
+            else:
+                print(f"Warning: No RMS data found for {path_str}")
         return activity_masks
 
     def _find_common_valid_start_seconds(self, file_paths: List[Path]) -> List[int]:

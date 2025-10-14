@@ -11,14 +11,6 @@ model:
     hop_size: 512
     sample_rate: 48000
 
-discriminators:
-  - name: "MultiFrequencyDiscriminator"
-    params:
-      nch: 1
-      window_sizes: [2048, 1024, 512]
-      sample_rate: 48000
-      norm: True
-
 data:
   sample_rate: 48000
   clip_duration: 3.0
@@ -37,26 +29,11 @@ data:
     num_workers: 8
 
 optimizer_g:
-  lr: 0.0002
-  betas: [0.8, 0.99]
-
-optimizer_d:
-  lr: 0.0002
+  lr: 0.0005
   betas: [0.8, 0.99]
 
 scheduler:
   warm_up_steps: 10000
-
-losses:
-  gan_type: 'lsgan'
-  lambda_recon: 100.0
-  lambda_feat: 2.0
-  lambda_gan: 1.0
-  reconstruction_loss:
-    sample_rate: 48000
-    n_fft: [1024, 2048, 512]
-    hop_length: [256, 512, 128]
-    n_mels: [80, 160, 40]
 
 trainer:
   max_steps: 1000000
