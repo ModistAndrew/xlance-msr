@@ -1,12 +1,12 @@
-project_name: "msrkit"
-exp_name: "melroformer_vocal_restoration"
+project_name: "melunet"
+exp_name: "drums"
 
 model:
-  name: "MelRoFormer"
+  name: "MelUNet"
   params:
-    hidden_channels: 128
-    num_layers: 12
-    num_heads: 4
+    hidden_channels: 64
+    num_layers: 4
+    upsampling_factor: 2
     window_size: 2048
     hop_size: 512
     sample_rate: 48000
@@ -21,20 +21,20 @@ discriminators:
 
 data:
   sample_rate: 48000
-  clip_duration: 3.0
+  clip_duration: 4.0
   train_dataset:
-    target_stem: "Voc"
+    target_stem: "Rhy_DK"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
     apply_augmentation: True
     snr_range: [0.0, 10.0]
   val_dataset:
-    target_stem: "Voc"
+    target_stem: "Rhy_DK"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
   dataloader_params:
-    batch_size: 4
-    num_workers: 8
+    batch_size: 16
+    num_workers: 32
 
 optimizer_g:
   lr: 0.0002
@@ -45,13 +45,13 @@ optimizer_d:
   betas: [0.8, 0.99]
 
 scheduler:
-  warm_up_steps: 10000
+  warm_up_steps: 5000
 
 losses:
   gan_type: 'lsgan'
-  lambda_recon: 100.0
-  lambda_feat: 2.0
-  lambda_gan: 1.0
+  lambda_recon: 45.0
+  lambda_feat: 10.0
+  lambda_gan: 0.1
   reconstruction_loss:
     sample_rate: 48000
     n_fft: [1024, 2048, 512]
@@ -63,6 +63,6 @@ trainer:
   log_every_n_steps: 100
   checkpoint_save_interval: 10000
   limit_train_batches: 2000
-  devices: [0]
+  devices: [1]
   precision: bf16-mixed
-  save_dir: logs
+  save_dir: logs/

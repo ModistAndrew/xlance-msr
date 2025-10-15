@@ -101,6 +101,7 @@ class MusicRestorationModule(pl.LightningModule):
         self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
         self.loss_feat = FeatureMatchingLoss()
         self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
+        self.l1_loss = nn.L1Loss()
         
     def _init_generator(self):
         model_cfg = self.hparams.model
@@ -172,6 +173,20 @@ class MusicRestorationModule(pl.LightningModule):
         sch_g, sch_d = self.lr_schedulers()
         if sch_g: sch_g.step()
         if sch_d: sch_d.step()
+        
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        target = batch['target']
+        mixture = batch['mixture']
+
+        # reshape both from (b, c, t) to ((b, c) t)
+        target = rearrange(target, 'b c t -> (b c) t')
+        mixture = rearrange(mixture, 'b c t -> (b c) t')
+        
+        # Forward pass
+        generated = self(mixture)
+        loss_l1 = self.l1_loss(generated, target)
+        self.log(f'val/loss_l1', loss_l1)
+        return loss_l1
 
     def configure_optimizers(self):
         # Generator Optimizer
@@ -272,7 +287,7 @@ def main():
     data_module = MusicRestorationDataModule(config['data'])
     model_module = MusicRestorationModule(config) if 'discriminators' in config else SimpleMusicRestorationModule(config)
 
-    exp_name = f"{config['model']['name']}"
+    exp_name = f"{config['exp_name']}"
     exp_name = exp_name.replace(" ", "_")
     save_dir = Path(config['trainer']['save_dir']) / config['project_name'] / exp_name
     
