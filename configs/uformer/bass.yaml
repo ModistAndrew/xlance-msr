@@ -8,7 +8,6 @@ model:
     n_fft: 2048 # UFormer 的 Fourier 基类使用 n_fft (对应 MelUNet 的 window_size)
     hop_length: 512 # UFormer 的 Fourier 基类使用 hop_length (对应 MelUNet 的 hop_size)
     sr: 48000 # 对应 data:sample_rate
-    
     # 2. UFormer 架构参数 (从默认或推荐值设定)
     n_layer: 12  # Transformer 层的数量 (例如 12 层)
     n_head: 16   # 注意力头的数量 (例如 16)

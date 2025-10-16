@@ -155,7 +155,7 @@ def main():
     LOCAL_AESTHETICS_CKPT = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRKit/audiobox/audiobox_aes_checkpoint.pt"
     try:
         print("\nLoading AudioBox Aesthetics predictor...")
-        aesthetics_predictor = initialize_predictor(ckpt=LOCAL_AESTHETICS_CKPT)
+        aesthetics_predictor = initialize_predictor(ckpt=None)
         print("AudioBox Aesthetics predictor loaded successfully.")
     except Exception as e:
         print(f"Error loading AudioBox Aesthetics predictor: {e}. Aesthetics calculation will be skipped.")
@@ -359,8 +359,8 @@ def main():
         results_file.write(f"\nTotal pairs for FAD-CLAP: {len(all_target_paths)}\n")
         print("Loading CLAP model...")
         LOCAL_MODEL_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRKit/clap-model"  # 您下载的模型路径
-        clap_model = ClapModel.from_pretrained(LOCAL_MODEL_PATH)
-        clap_processor = ClapProcessor.from_pretrained(LOCAL_MODEL_PATH)
+        clap_model = ClapModel.from_pretrained("laion/clap-htsat-unfused")
+        clap_processor = ClapProcessor.from_pretrained("laion/clap-htsat-unfused")
         clap_model.eval()
         print("CLAP model loaded successfully.")
     except Exception as e:
