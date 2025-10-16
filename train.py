@@ -12,6 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 from data.dataset import RawStems, InfiniteSampler
 from models import MelRNN, MelRoFormer, UNet
+from models.UFormer import UFormer, UFormerConfig
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
 
@@ -100,6 +101,7 @@ class MusicRestorationModule(pl.LightningModule):
         self.loss_gen_adv = GeneratorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
         self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
         self.loss_feat = FeatureMatchingLoss()
+        #Uformer:(B,C,T);else:(B*C,T)
         self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
         self.l1_loss = nn.L1Loss()
         
@@ -111,6 +113,19 @@ class MusicRestorationModule(pl.LightningModule):
             return MelRoFormer.MelRoFormer(**model_cfg['params'])
         elif model_cfg['name'] == 'MelUNet':
             return UNet.MelUNet(**model_cfg['params'])
+        ###new
+        elif model_cfg['name'] == 'UFormer':
+            uformer_cfg_params = {
+                'sr': self.hparams.data['sample_rate'],
+                'n_fft': model_cfg['params'].get('n_fft', 2048),
+                'hop_length': model_cfg['params'].get('hop_length', 512),
+                'n_layer': model_cfg['params'].get('n_layer', 12),
+                'n_head': model_cfg['params'].get('n_head', 16),
+                'n_embd': model_cfg['params'].get('n_embd', 512),
+            }
+            config = UFormerConfig(**uformer_cfg_params)
+            return UFormer(config)
+        ###
         else:
             raise ValueError(f"Unknown model name: {model_cfg['name']}")
 
@@ -122,16 +137,26 @@ class MusicRestorationModule(pl.LightningModule):
         
         target = batch['target']
         mixture = batch['mixture']
-
-        # reshape both from (b, c, t) to ((b, c) t)
-        target = rearrange(target, 'b c t -> (b c) t')
-        mixture = rearrange(mixture, 'b c t -> (b c) t')
+        
+        is_uformer = self.hparams.model['name'] == 'UFormer'
+        if not is_uformer:
+            # reshape both from (b, c, t) to ((b, c) t)
+            target = rearrange(target, 'b c t -> (b c) t')
+            mixture = rearrange(mixture, 'b c t -> (b c) t')
         
         # --- Train Discriminator ---
-        generated = self(mixture)
         
-        real_scores, _ = self.discriminator(target.unsqueeze(1))
-        fake_scores, _ = self.discriminator(generated.detach().unsqueeze(1))
+        generated = self(mixture)
+        #  Discriminator 输入准备: 无论哪种模型，Discriminator 都需要 (B*C, 1, T)
+        if generated.dim() == 3: # UFormer/其他输出 (B, C, T)
+            target_disc = rearrange(target, 'b c t -> (b c) 1 t')
+            generated_disc = rearrange(generated, 'b c t -> (b c) 1 t')
+        else: # MelUNet/其他输出 (B*C, T)
+            target_disc = target.unsqueeze(1)
+            generated_disc = generated.unsqueeze(1)
+        
+        real_scores, _ = self.discriminator(target_disc)
+        fake_scores, _ = self.discriminator(generated_disc.detach())
         
         d_loss, _, _ = self.loss_disc_adv(real_scores, fake_scores)
         
@@ -141,10 +166,12 @@ class MusicRestorationModule(pl.LightningModule):
         self.log('train/d_loss', d_loss, prog_bar=True)
 
         # --- Train Generator ---
-        real_scores, real_fmaps = self.discriminator(target.unsqueeze(1))
-        fake_scores, fake_fmaps = self.discriminator(generated.unsqueeze(1))
-
-        # Reconstruction Loss
+        real_scores, real_fmaps = self.discriminator(target_disc)
+        fake_scores, fake_fmaps = self.discriminator(generated_disc)
+        
+        # Reconstruction Loss: 必须确保 generated 和 target_gen/target 维度匹配
+        # target_gen/generated 形状可能是 (B, C, T) 或 (B*C, T)
+        # 这里的 loss_recon 必须基于 target_gen (或 target) 和 generated
         loss_recon = self.loss_recon(generated, target)
         
         # Adversarial Loss
@@ -177,10 +204,13 @@ class MusicRestorationModule(pl.LightningModule):
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
         target = batch['target']
         mixture = batch['mixture']
+        
+        is_uformer = self.hparams.model['name'] == 'UFormer'
 
-        # reshape both from (b, c, t) to ((b, c) t)
-        target = rearrange(target, 'b c t -> (b c) t')
-        mixture = rearrange(mixture, 'b c t -> (b c) t')
+        if not is_uformer:
+            # reshape both from (b, c, t) to ((b, c) t) for older models
+            target = rearrange(target, 'b c t -> (b c) t')
+            mixture = rearrange(mixture, 'b c t -> (b c) t')
         
         # Forward pass
         generated = self(mixture)
@@ -239,10 +269,10 @@ class SimpleMusicRestorationModule(pl.LightningModule):
     def common_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
         target = batch['target']
         mixture = batch['mixture']
-
-        # reshape both from (b, c, t) to ((b, c) t)
-        target = rearrange(target, 'b c t -> (b c) t')
-        mixture = rearrange(mixture, 'b c t -> (b c) t')
+        if self.hparams.model['name'] != 'UFormer':
+            # reshape both from (b, c, t) to ((b, c) t)
+            target = rearrange(target, 'b c t -> (b c) t')
+            mixture = rearrange(mixture, 'b c t -> (b c) t')
         
         # Forward pass
         generated = self(mixture)
