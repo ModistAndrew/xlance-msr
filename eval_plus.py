@@ -1,3 +1,4 @@
+import glob
 import os
 import soundfile as sf
 import torch
@@ -38,6 +39,7 @@ def load_audio(file_path, target_sr=48000):
         wav_tensor = torch.from_numpy(wav).float()
 
         if samplerate != target_sr:
+            print(f"Warning: Resampling audio from {samplerate} to {target_sr}")
             resampler = T.Resample(orig_freq=samplerate, new_freq=target_sr)
             wav_tensor = resampler(wav_tensor)
         
@@ -102,16 +104,50 @@ def calculate_frechet_distance(embeddings1, embeddings2):
     fad_score = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
     return fad_score
 
+def find_matching_pairs(target_dir, output_dir):
+    """
+    找到target和output文件夹中的匹配文件对
+    假设target文件名为: 0.flac, 1.flac, ..., 249.flac
+    output文件名为: {target_id}_DT{index}.flac
+    """
+    pairs = []
+    
+    target_files = glob.glob(os.path.join(target_dir, "*.flac"))
+    target_files.sort()
+    
+    print(f"Found {len(target_files)} target files in {target_dir}")
+    
+    for target_file in target_files:
+        target_id = os.path.splitext(os.path.basename(target_file))[0]
+        
+        output_pattern = os.path.join(output_dir, f"{target_id}_DT*.flac")
+        matching_outputs = glob.glob(output_pattern)
+        matching_outputs.sort()
+        
+        if matching_outputs:
+            print(f"Target {target_id}: found {len(matching_outputs)} output files")
+            for output_file in matching_outputs:
+                pairs.append((target_file, output_file))
+        else:
+            print(f"Target {target_id}: no matching output files found")
+    
+    return pairs
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate SI-SNR and FAD-CLAP for audio pairs. All audio is resampled to 48000Hz.")
-    parser.add_argument("file_list", type=str, help="Path to a text file with the format: target_path|output_path")
+    parser.add_argument("--file_list", type=str, help="Path to a text file with the format: target_path|output_path")
+    parser.add_argument("--target_dir", type=str, help="Path to target audio directory")
+    parser.add_argument("--output_dir", type=str, help="Path to output audio directory") 
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size for FAD-CLAP embedding calculation.")
     parser.add_argument("--output_file", type=str, default="evaluation_results.txt", help="Filename to save all evaluation results.")
     args = parser.parse_args()
-
-    if not os.path.exists(args.file_list):
-        print(f"Error: Input file not found at {args.file_list}")
+    
+    if args.file_list and (args.target_dir or args.output_dir):
+        print("Error: Please use either --file_list OR --target_dir/--output_dir, not both.")
+        return
+        
+    if not args.file_list and (not args.target_dir or not args.output_dir):
+        print("Error: Please provide either --file_list OR both --target_dir and --output_dir.")
         return
     
     # 初始化 AudioBox Aesthetics Predictor
@@ -145,49 +181,50 @@ def main():
     
     TARGET_SR = 48000 
     
-    with open(args.file_list, 'r') as f:
-        for line in tqdm(f.readlines(), desc="  Processing audio pairs", ncols=100):
-            line = line.strip()
-            if not line or '|' not in line:
-                continue
+    def calculate_sisnr(target_path, output_path):
+        if not os.path.exists(target_path) or not os.path.exists(output_path):
+            raise Exception(f"Skipping, file not found: {target_path} -> {output_path}")
+        target_wav = load_audio(target_path, TARGET_SR)
+        output_wav = load_audio(output_path, TARGET_SR)
+        if target_wav is None or output_wav is None:
+            raise Exception(f"Skipping, waveform not loaded: {target_path} -> {output_path}")
+        if target_wav.shape[0] != output_wav.shape[0]:
+            raise Exception(f"Skipping, shape mismatch: {target_path} -> {output_path}")
+        min_len = min(target_wav.shape[-1], output_wav.shape[-1])
+        target_wav = target_wav[..., :min_len]
+        output_wav = output_wav[..., :min_len]
+        if target_wav.shape[-1] == 0:
+            raise Exception(f"Skipping, zero-length waveform: {target_path} -> {output_path}")
+        sisnr_val = sisnr_calculator(output_wav, target_wav)
+        all_sisnr_values.append(sisnr_val.item())
+        print(f"{target_path}|{output_path}|{sisnr_val.item():.4f}")
+        all_target_paths.append(target_path)
+        all_output_paths.append(output_path)
+    
+    if args.file_list:
+        with open(args.file_list, 'r') as f:
+            for line in tqdm(f.readlines(), desc="  Processing audio pairs", ncols=100):
+                line = line.strip()
+                if not line or '|' not in line:
+                    continue
 
+                try:
+                    target_path, output_path = [p.strip() for p in line.split('|')]
+                    calculate_sisnr(target_path, output_path)
+                except Exception:
+                    print(f"Error processing a pair: {e}")
+                    continue
+    else:
+        print("--- Finding matching file pairs ---")
+        pairs = find_matching_pairs(args.target_dir, args.output_dir)
+        print(f"Found {len(pairs)} file pairs")
+        for target_path, output_path in pairs:
             try:
-                target_path, output_path = [p.strip() for p in line.split('|')]
-
-                if not os.path.exists(target_path) or not os.path.exists(output_path):
-                    continue
-
-                target_wav = load_audio(target_path, target_sr=TARGET_SR)
-                output_wav = load_audio(output_path, target_sr=TARGET_SR)
-
-                if target_wav is None or output_wav is None:
-                    continue
-                
-                if target_wav.shape[0] != output_wav.shape[0]:
-                    pass
-                    
-                min_len = min(target_wav.shape[-1], output_wav.shape[-1])
-                target_wav = target_wav[..., :min_len]
-                output_wav = output_wav[..., :min_len]
-
-                if target_wav.shape[-1] == 0:
-                    continue
-
-                sisnr_val = sisnr_calculator(output_wav, target_wav)
-                sisnr_item = sisnr_val.item()
-                
-                """# 获取文件名 (只保留文件名，不含路径)
-                target_filename = os.path.basename(target_path)
-                output_filename = os.path.basename(output_path)"""
-                
-                
-                all_sisnr_values.append(sisnr_item) # 存储 SI-SNR 值
-                all_target_paths.append(target_path)
-                all_output_paths.append(output_path)
-
-            except Exception:
-                print(f"Error processing a pair: {e}")
+                calculate_sisnr(target_path, output_path)
+            except Exception as e:
+                print(f"Error processing {target_path} -> {output_path}: {e}")
                 continue
+            
     # ----------------------------------------------------
     # PHASE 2: 批量计算 AudioBox Aesthetics 分数
     # ----------------------------------------------------
