@@ -358,7 +358,7 @@ def main():
     try:
         results_file.write(f"\nTotal pairs for FAD-CLAP: {len(all_target_paths)}\n")
         print("Loading CLAP model...")
-        LOCAL_MODEL_PATH = "./clap-model"  # 您下载的模型路径
+        LOCAL_MODEL_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRKit/clap-model"  # 您下载的模型路径
         clap_model = ClapModel.from_pretrained(LOCAL_MODEL_PATH)
         clap_processor = ClapProcessor.from_pretrained(LOCAL_MODEL_PATH)
         clap_model.eval()
