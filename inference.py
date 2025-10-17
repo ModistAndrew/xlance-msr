@@ -1,4 +1,5 @@
 import argparse
+from collections import OrderedDict
 import yaml
 from pathlib import Path
 from typing import Dict, Any
@@ -11,6 +12,22 @@ from tqdm import tqdm
 
 from models import MelRNN, MelRoFormer, UNet
 
+
+def load_ckpt_or_pth(path: str, map_location: str) -> Any:
+    if path.endswith('.pth'):
+        return torch.load(path, map_location=map_location)
+    print(f"Extracting state dict from {path}")
+    full_checkpoint = torch.load(path, map_location=map_location, weights_only=False)
+    full_state_dict = full_checkpoint['state_dict']
+    generator_state_dict = OrderedDict()
+    prefix = 'generator.'
+    prefix_len = len(prefix)
+    for key, value in full_state_dict.items():
+        if key.startswith(prefix):
+            new_key = key[prefix_len:]
+            generator_state_dict[new_key] = value
+    return generator_state_dict
+            
 
 def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = 'cuda') -> nn.Module:
     """Initialize and load the generator model from unwrapped checkpoint."""
@@ -27,7 +44,7 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
     
     # Load unwrapped generator weights
-    state_dict = torch.load(checkpoint_path, map_location=device)
+    state_dict = load_ckpt_or_pth(checkpoint_path, device)
     generator.load_state_dict(state_dict)
     
     generator = generator.to(device)
