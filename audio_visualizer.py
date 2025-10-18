@@ -5,218 +5,265 @@ import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
+import re
+from collections import defaultdict
 
 # 设置页面配置
-st.set_page_config(page_title="音频对比与频谱可视化工具 (v2.0)", layout="wide")
+st.set_page_config(page_title="多音频对比与频谱可视化工具 (v5.2 - 最终稳定版)", layout="wide")
 
 # --- 辅助函数 ---
 
-# 定义一个可以清理文件名的函数，以便提取通用ID
-def clean_filename_for_id(filename_base, prefixes):
-    """从文件名基础部分剥离指定前缀，获取通用ID"""
-    cleaned_name = filename_base
-    for prefix in prefixes:
-        if cleaned_name.startswith(prefix):
-            cleaned_name = cleaned_name[len(prefix):]
-    return cleaned_name
+def get_safe_prefix(prefix_input):
+    """从逗号分隔的字符串中安全地获取第一个有效前缀，否则返回空字符串。"""
+    prefix_list = [p.strip() for p in prefix_input.split(',') if p.strip()]
+    return prefix_list[0] if prefix_list else ""
 
-def get_audio_files_v2(folder_path, prefixes, extensions=['.wav', '.mp3', '.flac']):
-    """获取文件夹内所有指定扩展名的音频文件的通用ID (通过剥离前缀)"""
+def get_prefix_list(prefix_input):
+    """从逗号分隔的字符串中获取所有有效前缀的列表。"""
+    return [p.strip() for p in prefix_input.split(',') if p.strip()]
+
+def get_universal_ids_regex(folder_path, prefix_list, regex_pattern, extensions=['.wav', '.mp3', '.flac']):
+    # ... (此函数体保持不变) ...
     if not os.path.isdir(folder_path):
-        return {} # 返回 ID 到 完整文件名基础 (base name) 的映射
+        return set() 
     
-    file_ids = {}
-    for filename in os.listdir(folder_path):
-        base, ext = os.path.splitext(filename)
-        if ext.lower() in extensions:
-            # 获取通用 ID
-            file_id = clean_filename_for_id(base, prefixes)
-            # 存储通用 ID 到 文件的基础名称 (例如: '2' -> 'mixture_2')
-            file_ids[file_id] = base
-    return file_ids
+    ids = set()
+    try:
+        compiled_regex = re.compile(regex_pattern)
+        
+        for filename in os.listdir(folder_path):
+            base, ext = os.path.splitext(filename)
+            if ext.lower() in extensions:
+                
+                current_base = base
+                for prefix in prefix_list:
+                    if current_base.startswith(prefix):
+                        current_base = current_base[len(prefix):]
+                        break
+                
+                match = compiled_regex.match(current_base)
+                
+                if match and 'x' in match.groupdict():
+                    file_id_x = match.group('x')
+                    if file_id_x:
+                        ids.add(file_id_x)
+                        
+    except re.error as e:
+        return set()
+    except Exception:
+        pass
+        
+    return ids
+
+@st.cache_data(show_spinner="正在扫描文件并匹配通用 ID (x)...")
+def find_matched_ids(output_path, mix_path, tar_path, out_pfx_str, mix_pfx_str, tar_pfx_str, out_pat, mix_pat, tar_pat):
+    """获取三个文件夹中所有通用 ID (x) 的交集，并缓存结果。"""
+    
+    out_prefixes_list = get_prefix_list(out_pfx_str)
+    mix_prefixes_list = get_prefix_list(mix_pfx_str)
+    tar_prefixes_list = get_prefix_list(tar_pfx_str)
+
+    # 获取三个集合的通用 ID (x)
+    out_ids = get_universal_ids_regex(output_path, out_prefixes_list, out_pat)
+    mix_ids = get_universal_ids_regex(mix_path, mix_prefixes_list, mix_pat)
+    tar_ids = get_universal_ids_regex(tar_path, tar_prefixes_list, tar_pat)
+    
+    # 找到三个集合的交集
+    matched_x_ids = sorted(list(out_ids & mix_ids & tar_ids))
+    return matched_x_ids
+
 
 @st.cache_data(show_spinner="正在加载音频并生成频谱图...")
 def generate_spectrogram(audio_path, title):
-    """加载音频并生成梅尔频谱图，返回Matplotlib Figure对象"""
+    # --- 修复点 2: 移除中文标题 (中文乱码问题) ---
     try:
         y, sr = librosa.load(audio_path, sr=None)
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_fft=2048, hop_length=512)
         S_dB = librosa.power_to_db(S, ref=np.max)
         
         fig, ax = plt.subplots(figsize=(10, 4))
-        # 使用'viridis'作为默认色图，如果'magma'在某些环境下不适用
         img = librosa.display.specshow(S_dB, sr=sr, x_axis='time', y_axis='mel', ax=ax, cmap='viridis')
-        ax.set(title=f'Mel-spectrogram: {title}')
+        ax.set(title=f'Mel Spectrogram: {title}', xlabel='Time', ylabel='Mel Freq') # <-- 标题改为英文
+        ax.tick_params(labelsize=8)
         
         return fig
     except FileNotFoundError:
         return None
-    except Exception:
+    except Exception as e:
+        st.error(f"处理音频文件失败: {str(e)}")
         return None
 
 # --- Streamlit 状态初始化 ---
+if 'output_path' not in st.session_state: st.session_state.output_path = ""
+if 'mixture_path' not in st.session_state: st.session_state.mixture_path = ""
+if 'target_path' not in st.session_state: st.session_state.target_path = ""
+if 'output_pattern' not in st.session_state: st.session_state.output_pattern = r"(?P<x>\d+)_DT(?P<y>\d+)" 
+if 'mix_pattern' not in st.session_state: st.session_state.mix_pattern = r"(?P<x>\d+)_DT(?P<y>\d+)" 
+if 'tar_pattern' not in st.session_state: st.session_state.tar_pattern = r"(?P<x>\d+)" 
+if 'output_prefixes' not in st.session_state: st.session_state.output_prefixes = ""
+if 'mix_prefixes' not in st.session_state: st.session_state.mix_prefixes = ""
+if 'tar_prefixes' not in st.session_state: st.session_state.tar_prefixes = ""
+if 'separator' not in st.session_state: st.session_state.separator = "_DT" # <--- 新增状态
+if 'selected_y' not in st.session_state: st.session_state.selected_y = "0" 
+if 'available_x_ids' not in st.session_state: st.session_state.available_x_ids = [] 
+if 'selected_x_id' not in st.session_state: st.session_state.selected_x_id = None
 
-if 'mixture_path' not in st.session_state:
-    st.session_state.mixture_path = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/music-source-restoration/msr_test_set/Bass" # 预设您的路径
-if 'target_path' not in st.session_state:
-    st.session_state.target_path = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/music-source-restoration/Result/Bass_gan_35k" # 预设您的路径
-if 'mix_prefixes' not in st.session_state:
-    st.session_state.mix_prefixes = "mixture_,source_" # 混合文件常见前缀
-if 'tar_prefixes' not in st.session_state:
-    st.session_state.tar_prefixes = "restored_,pred_,target_" # 目标文件常见前缀
-if 'matched_ids' not in st.session_state:
-    st.session_state.matched_ids = {} # 存储匹配的通用ID -> (mix_base, tar_base)
-if 'available_keys' not in st.session_state:
-    st.session_state.available_keys = [] # 存储通用ID列表
-if 'selected_key' not in st.session_state:
-    st.session_state.selected_key = None
 
 # --- 主体 UI ---
 
-st.title("🎼 音频对比与频谱可视化工具 (v2.0)")
-st.markdown("此版本包含**智能文件名匹配**功能，用于音源分离/恢复数据的可视化。")
+st.title("🎼 多音频对比与频谱可视化工具 (v5.2 - 最终稳定版)")
 
 # 1. 文件夹输入
 st.header("1. 输入文件夹路径")
-col_mix, col_tar = st.columns(2)
-with col_mix:
-    mixture_path_input = st.text_input("输入 **Mixture/原始音频** 文件夹路径", st.session_state.mixture_path)
-with col_tar:
-    target_path_input = st.text_input("输入 **Target/结果音频** 文件夹路径", st.session_state.target_path)
-st.session_state.mixture_path = mixture_path_input
-st.session_state.target_path = target_path_input
+col_out, col_mix, col_tar = st.columns(3)
+with col_out: st.session_state.output_path = st.text_input("Output 文件夹路径", st.session_state.output_path)
+with col_mix: st.session_state.mixture_path = st.text_input("Mixture 文件夹路径", st.session_state.mixture_path)
+with col_tar: st.session_state.target_path = st.text_input("Target 文件夹路径", st.session_state.target_path)
 
 
-# 2. 前缀配置
-st.header("2. 配置文件名匹配前缀")
-st.markdown("请配置文件名中需要被**剥离**的前缀，以获得通用ID进行匹配。")
-col_mix_p, col_tar_p, col_btn = st.columns([1, 1, 0.5])
+# 2. 模式和前缀配置
+st.header("2. 配置文件名匹配模式")
+st.markdown("请为每种文件类型配置**独立**的模式和前缀。模式必须包含 `(?P<x>...)`。")
 
-with col_mix_p:
-    mix_prefixes_input = st.text_input("Mixture 文件前缀 (逗号分隔)", st.session_state.mix_prefixes, key="mix_p_input")
+# --- Output 配置 ---
+col_out_p, col_out_r = st.columns(2)
+with col_out_p: st.session_state.output_prefixes = st.text_input("Output 前缀", st.session_state.output_prefixes)
+with col_out_r: st.session_state.output_pattern = st.text_input("Output 模式 (提取 x)", st.session_state.output_pattern, key='out_pat', help="例如: `(?P<x>\d+)_DT\d+`")
 
-with col_tar_p:
-    tar_prefixes_input = st.text_input("Target 文件前缀 (逗号分隔)", st.session_state.tar_prefixes, key="tar_p_input")
+# --- Mixture 配置 ---
+col_mix_p, col_mix_r = st.columns(2)
+with col_mix_p: st.session_state.mix_prefixes = st.text_input("Mixture 前缀", st.session_state.mix_prefixes)
+with col_mix_r: st.session_state.mix_pattern = st.text_input("Mixture 模式 (提取 x)", st.session_state.mix_pattern, key='mix_pat', help="例如: `(?P<x>\d+)_DT\d+`")
 
-with col_btn:
-    st.write(" ") # 占位
-    if st.button("加载/刷新文件列表", help="清除缓存，根据前缀重新匹配音频对"):
-        st.session_state.mix_prefixes = mix_prefixes_input
-        st.session_state.tar_prefixes = tar_prefixes_input
+# --- Target 配置 (修复点 1: 确保 Target 模式在这里配置) ---
+col_tar_p, col_tar_r = st.columns(2)
+with col_tar_p: st.session_state.tar_prefixes = st.text_input("Target 前缀", st.session_state.tar_prefixes)
+with col_tar_r: st.session_state.tar_pattern = st.text_input("Target 模式 (提取 x)", st.session_state.tar_pattern, key='tar_pat', help="例如: `(?P<x>\d+)`")
+
+
+# 3. 核心版本号配置 (UI 结构调整，避免重复标题)
+st.header("3. 核心版本号与 ID 加载")
+col_sep, col_y, col_btn_y = st.columns([1, 1, 2])
+with col_sep:
+    st.session_state.separator = st.text_input("X和Y之间的分隔符", st.session_state.separator, help="例如：`_DT`，`_V_` 等。**注意：修改此项后必须相应修改第2部分的模式！**") 
+with col_y:
+    st.session_state.selected_y = st.text_input("目标小版本号 (y)", st.session_state.selected_y)
+
+with col_btn_y:
+    st.write(" ")
+    if st.button("加载/刷新通用ID列表 (x)", help="清除缓存，根据新的模式和前缀重新匹配通用大序号 (x)"):
         st.cache_data.clear()
-        # 重置选择，触发后续匹配逻辑
-        st.session_state.selected_key = None 
+        st.session_state.selected_x_id = None 
         st.rerun()
 
-# 3. 文件列表加载逻辑
-if st.session_state.mixture_path and st.session_state.target_path:
-    
-    # 将逗号分隔的前缀字符串转换为列表
-    mix_prefixes_list = [p.strip() for p in st.session_state.mix_prefixes.split(',') if p.strip()]
-    tar_prefixes_list = [p.strip() for p in st.session_state.tar_prefixes.split(',') if p.strip()]
 
-    # 获取两个文件夹的 ID -> 文件基础名称 映射
-    mix_id_to_base = get_audio_files_v2(st.session_state.mixture_path, mix_prefixes_list)
-    tar_id_to_base = get_audio_files_v2(st.session_state.target_path, tar_prefixes_list)
+# 4. 文件列表加载逻辑 (通用 ID x)
+if st.session_state.output_path and st.session_state.mixture_path and st.session_state.target_path:
     
-    # 找到共同存在的通用 ID
-    matched_ids = mix_id_to_base.keys() & tar_id_to_base.keys()
+    # 核心：调用缓存函数，如果参数不变，它会立即返回结果
+    matched_x_ids = find_matched_ids(
+        st.session_state.output_path, st.session_state.mixture_path, st.session_state.target_path,
+        st.session_state.output_prefixes, st.session_state.mix_prefixes, st.session_state.tar_prefixes,
+        st.session_state.output_pattern, st.session_state.mix_pattern, st.session_state.tar_pattern
+    )
     
-    st.session_state.matched_ids = {
-        file_id: (mix_id_to_base[file_id], tar_id_to_base[file_id])
-        for file_id in matched_ids
-    }
-    st.session_state.available_keys = sorted(list(matched_ids))
+    st.session_state.available_x_ids = matched_x_ids
 
-    if not st.session_state.available_keys:
-        st.warning("在两个文件夹中未找到匹配的音频对。请检查路径、文件格式或**前缀配置**。")
+    if not st.session_state.available_x_ids:
+        st.warning("在三个文件夹中未找到匹配的通用音频 ID (x)。请检查路径、文件格式或正则表达式模式。")
     else:
-        st.success(f"成功找到 {len(st.session_state.available_keys)} 对匹配的音频文件ID。")
-        # 确保选中的key仍然可用
-        if st.session_state.selected_key not in st.session_state.available_keys:
-            st.session_state.selected_key = st.session_state.available_keys[0] if st.session_state.available_keys else None
+        st.success(f"成功找到 {len(st.session_state.available_x_ids)} 个匹配的通用 ID (x)。")
+        if st.session_state.selected_x_id not in st.session_state.available_x_ids:
+            st.session_state.selected_x_id = st.session_state.available_x_ids[0] if st.session_state.available_x_ids else None
 
 
-# 4. 选择音频对
-st.header("3. 选择音频对")
-if st.session_state.available_keys:
-    
+# 5. 选择音频对 (通用 ID x)
+if st.session_state.available_x_ids:
+    st.header("4. 选择音频 ID (x)")
     col_select, col_random = st.columns([3, 1])
 
     with col_select:
-        # 手动选择
-        new_selected_key = st.selectbox(
-            "手动选择一个通用音频ID",
-            st.session_state.available_keys,
-            index=st.session_state.available_keys.index(st.session_state.selected_key) if st.session_state.selected_key in st.session_state.available_keys else 0
+        new_selected_x_id = st.selectbox(
+            "手动选择一个通用音频 ID (x)",
+            st.session_state.available_x_ids,
+            index=st.session_state.available_x_ids.index(st.session_state.selected_x_id) if st.session_state.selected_x_id in st.session_state.available_x_ids else 0
         )
-        # 如果新选择的 key 存在，则更新
-        if new_selected_key and new_selected_key != st.session_state.selected_key:
-            st.session_state.selected_key = new_selected_key
-
-    with col_random:
-        # 随机抽取
-        st.write(" ") # 占位
-        if st.button("随机抽取"):
-            st.session_state.selected_key = random.choice(st.session_state.available_keys)
+        if new_selected_x_id and new_selected_x_id != st.session_state.selected_x_id:
+            st.session_state.selected_x_id = new_selected_x_id
             st.rerun()
 
-# 5. 展示结果
-if st.session_state.selected_key and st.session_state.matched_ids:
-    selected_id = st.session_state.selected_key
+    with col_random:
+        st.write(" ")
+        if st.button("随机抽取 ID (x)"):
+            st.session_state.selected_x_id = random.choice(st.session_state.available_x_ids)
+            st.rerun()
+
+
+# 6. 展示结果
+if st.session_state.selected_x_id:
+    selected_x_id = st.session_state.selected_x_id
+    selected_y = st.session_state.selected_y
+    separator = st.session_state.separator 
     
-    if selected_id in st.session_state.matched_ids:
-        mix_base, tar_base = st.session_state.matched_ids[selected_id]
-        
-        st.header(f"4. 展示结果：通用 ID - {selected_id}")
-        st.markdown(f"**Mixture 文件基础名:** `{mix_base}` | **Target 文件基础名:** `{tar_base}`")
+    st.header(f"5. 展示结果：ID(x) - {selected_x_id}, 版本(y) - {selected_y}")
 
-        # 路径查找函数
-        def get_full_path(folder, base_name):
-            """尝试查找常用扩展名，返回完整路径"""
-            for ext in ['.wav', '.mp3', '.flac']:
-                full_path = os.path.join(folder, base_name + ext)
-                if os.path.exists(full_path):
-                    return full_path
-            return None
+    # --- 文件路径构造逻辑 ---
+    
+    def find_full_path(folder, base_name):
+        """尝试查找常用扩展名，返回完整路径"""
+        for ext in ['.wav', '.flac', '.mp3']:
+            full_path = os.path.join(folder, base_name + ext)
+            if os.path.exists(full_path):
+                return full_path
+        return None
 
-        mix_file_path = get_full_path(st.session_state.mixture_path, mix_base)
-        tar_file_path = get_full_path(st.session_state.target_path, tar_base)
-        
-        if mix_file_path and tar_file_path:
-            
-            col_mix, col_tar = st.columns(2)
-            
-            # --- Mixture 音频展示 ---
-            with col_mix:
-                st.subheader("Mixture (原始/输入)")
-                st.markdown(f"**路径:** `{mix_file_path}`")
+    # ✅ 安全获取前缀
+    out_prefix = get_safe_prefix(st.session_state.output_prefixes)
+    mix_prefix = get_safe_prefix(st.session_state.mix_prefixes)
+    tar_prefix = get_safe_prefix(st.session_state.tar_prefixes)
+
+    
+    # 1. Output 文件：[Output Prefix]x[SEPARATOR]y
+    output_base_name = f"{out_prefix}{selected_x_id}{separator}{selected_y}"
+    output_file_path = find_full_path(st.session_state.output_path, output_base_name)
+    
+    # 2. Mixture 文件：[Mixture Prefix]x[SEPARATOR]y
+    mixture_base_name = f"{mix_prefix}{selected_x_id}{separator}{selected_y}"
+    mixture_file_path = find_full_path(st.session_state.mixture_path, mixture_base_name)
+    
+    # 3. Target 文件：[Target Prefix]x (简化的命名)
+    target_base_name = f"{tar_prefix}{selected_x_id}"
+    target_file_path = find_full_path(st.session_state.target_path, target_base_name)
+    
+    
+    # --- 三列展示 ---
+    col_out, col_mix, col_tar = st.columns(3)
+    
+    def display_audio_col(col, title, file_path, base_name):
+        with col:
+            st.subheader(title)
+            if file_path:
+                st.markdown(f"**File:** `{os.path.basename(file_path)}`")
                 
                 try:
-                    st.audio(mix_file_path, format='audio/wav') # 尝试指定格式
+                    # 尝试用 flac 格式播放，如果文件是 flac
+                    ext = os.path.splitext(file_path)[1].lower()
+                    st.audio(file_path, format=f'audio/{ext.strip(".")}' if ext else 'audio/wav')
                 except Exception as e:
-                    st.error(f"播放混合音频失败: {str(e)}")
+                    st.error(f"Playback failed for {title}: {str(e)}")
                 
-                fig_mix = generate_spectrogram(mix_file_path, f"Mixture ({mix_base})")
-                if fig_mix:
-                    st.pyplot(fig_mix)
-                    plt.close(fig_mix) # 避免内存泄漏
-                    
-            # --- Target 音频展示 ---
-            with col_tar:
-                st.subheader("Target (恢复/结果)")
-                st.markdown(f"**路径:** `{tar_file_path}`")
-                
-                try:
-                    st.audio(tar_file_path, format='audio/wav') # 尝试指定格式
-                except Exception as e:
-                    st.error(f"播放目标音频失败: {str(e)}")
-                
-                fig_tar = generate_spectrogram(tar_file_path, f"Target ({tar_base})")
-                if fig_tar:
-                    st.pyplot(fig_tar)
-                    plt.close(fig_tar) # 避免内存泄漏
-        else:
-            st.error("无法找到选定音频对的完整文件路径，请检查文件扩展名或路径权限。")
-    else:
-        st.error(f"内部错误：通用 ID '{selected_id}' 未在匹配列表中找到。请刷新页面。")
+                fig = generate_spectrogram(file_path, title)
+                if fig:
+                    st.pyplot(fig)
+                    plt.close(fig)
+            else:
+                st.warning(f"File not found. Attempted base name: `{base_name}`")
+
+    # 1. Output 列
+    display_audio_col(col_out, "Output (Result)", output_file_path, output_base_name)
+    
+    # 2. Mixture 列
+    display_audio_col(col_mix, "Mixture (Original)", mixture_file_path, mixture_base_name)
+
+    # 3. Target 列
+    display_audio_col(col_tar, "Target (Ground Truth)", target_file_path, target_base_name)
