@@ -1,0 +1,68 @@
+project_name: "melrnn"
+exp_name: "perc"
+
+model:
+  name: "MelRNN"
+  params:
+    hidden_channels: 128
+    num_layers: 4
+    num_groups: 4
+    window_size: 2048
+    hop_size: 512
+    sample_rate: 48000
+
+discriminators:
+  - name: "MultiFrequencyDiscriminator"
+    params:
+      nch: 1
+      window_sizes: [2048, 1024, 512]
+      sample_rate: 48000
+      norm: True
+
+data:
+  sample_rate: 48000
+  clip_duration: 4.0
+  train_dataset:
+    target_stem: "Rhy_PERC"
+    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
+    apply_augmentation: True
+    snr_range: [0.0, 10.0]
+  val_dataset:
+    target_stem: "Rhy_PERC"
+    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
+    apply_augmentation: False
+    snr_range: [0.0, 10.0]
+  dataloader_params:
+    batch_size: 8
+    num_workers: 32
+
+optimizer_g:
+  lr: 0.0002
+  betas: [0.8, 0.99]
+
+optimizer_d:
+  lr: 0.0002
+  betas: [0.8, 0.99]
+
+scheduler:
+  warm_up_steps: 5000
+
+losses:
+  gan_type: 'lsgan'
+  lambda_recon: 45.0
+  lambda_feat: 10.0
+  lambda_gan: 0.1
+  reconstruction_loss:
+    sample_rate: 48000
+    n_fft: [1024, 2048, 512]
+    hop_length: [256, 512, 128]
+    n_mels: [80, 160, 40]
+
+trainer:
+  max_steps: 1000000
+  log_every_n_steps: 100
+  checkpoint_save_interval: 10000
+  limit_train_batches: 2000
+  devices: [2]
+  precision: bf16-mixed
+  save_dir: logs/
