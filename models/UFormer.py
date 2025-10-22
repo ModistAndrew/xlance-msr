@@ -296,7 +296,7 @@ class UFormer(Fourier):
             normalized=True
         )
 
-        self.ds_factor = 16  # Downsample factor
+        self.ds_factor = 32  # Downsample factor
         self.fps = config.sr // config.hop_length
         
         self.audio_channels = 2

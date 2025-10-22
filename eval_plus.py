@@ -112,7 +112,7 @@ def find_matching_pairs(target_dir, output_dir):
     """
     pairs = []
     
-    target_files = glob.glob(os.path.join(target_dir, "*.flac"))
+    target_files = glob.glob(os.path.join(target_dir, "*.*"))
     target_files.sort()
     
     print(f"Found {len(target_files)} target files in {target_dir}")
@@ -120,7 +120,7 @@ def find_matching_pairs(target_dir, output_dir):
     for target_file in target_files:
         target_id = os.path.splitext(os.path.basename(target_file))[0]
         
-        output_pattern = os.path.join(output_dir, f"{target_id}_DT*.flac")
+        output_pattern = os.path.join(output_dir, f"{target_id}_DT*.*")
         matching_outputs = glob.glob(output_pattern)
         matching_outputs.sort()
         

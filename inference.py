@@ -10,7 +10,7 @@ import soundfile as sf
 import numpy as np
 from tqdm import tqdm
 
-from models import MelRNN, MelRoFormer, UNet
+from models import MelRNN, MelRoFormer, UFormer, UNet
 
 
 def load_ckpt_or_pth(path: str, map_location: str) -> Any:
@@ -40,6 +40,8 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
         generator = MelRoFormer.MelRoFormer(**model_cfg['params'])
     elif model_cfg['name'] == 'MelUNet':
         generator = UNet.MelUNet(**model_cfg['params'])
+    elif model_cfg['name'] == 'UFormer':
+        generator = UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
     else:
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
     
@@ -54,12 +56,15 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
 
 
 def process_audio(audio: np.ndarray, generator: nn.Module, device: str = 'cuda') -> np.ndarray:
+    use_channel = isinstance(generator, UFormer.UFormer)
     """Process a single audio array through the generator."""
     # Convert to tensor: (channels, samples) -> (1, channels, samples)
     if audio.ndim == 1:
         audio = audio[np.newaxis, :]  # Add channel dimension for mono
     
     audio_tensor = torch.from_numpy(audio).float().to(device)
+    if use_channel:
+        audio_tensor = audio_tensor.unsqueeze(0) # Add batch dimension
     
     # Run inference
     with torch.no_grad():
@@ -67,6 +72,8 @@ def process_audio(audio: np.ndarray, generator: nn.Module, device: str = 'cuda')
     
     # Convert back to numpy: (1, channels, samples) -> (channels, samples)
     output_audio = output_tensor.cpu().numpy()
+    if use_channel:
+        output_audio = output_audio[0] # Remove batch dimension
     
     return output_audio
 
