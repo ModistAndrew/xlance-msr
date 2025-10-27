@@ -1,4 +1,5 @@
 import argparse
+from collections import OrderedDict
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List
@@ -12,6 +13,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 from data.dataset import RawStems, InfiniteSampler
 from models import MelRNN, MelRoFormer, UNet, UFormer
+from models.bs_roformer import bs_roformer as BSRoformer
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
 
@@ -88,22 +90,61 @@ class MusicRestorationModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(config)
         self.automatic_optimization = False # Needed for GANs
-        self.use_channel = self.hparams.model['name'] == 'UFormer'
+        self.use_channel = self.hparams.model['name'] in ['BSRoFormer', 'UFormer']
+        self.model_output_loss = self.hparams.model['name'] == 'BSRoFormer'
 
         # 1. Generator
         self.generator = self._init_generator()
+        if hasattr(self.hparams, 'checkpoint'):
+            self.load_generator_state_dict()
 
         # 2. Discriminator
-        if self.hparams.discriminators:
+        if hasattr(self.hparams, 'discriminators'):
             self.discriminator = CombinedDiscriminator(self.hparams.discriminators)
         # 3. Losses
-        loss_cfg = self.hparams.losses
-        if loss_cfg:
+        if hasattr(self.hparams, 'losses'):
+            loss_cfg = self.hparams.losses
             self.loss_gen_adv = GeneratorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
             self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
             self.loss_feat = FeatureMatchingLoss()
             self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
         self.l1_loss = nn.L1Loss()
+        
+    def load_generator_state_dict(self) -> Any:
+        path = self.hparams.checkpoint['path']
+        type = self.hparams.checkpoint['type']
+        full_checkpoint = torch.load(path)
+        if type == 'roformer':
+            generator_state_dict = OrderedDict()
+            filtered_prefix = 'mask_estimators.'
+            for key, value in full_checkpoint.items():
+                if key.startswith(filtered_prefix):
+                    continue
+                generator_state_dict[key] = value
+            missing_keys, unexpected_keys = self.generator.load_state_dict(generator_state_dict, strict=False)
+            for key in missing_keys:
+                if key.startswith(filtered_prefix):
+                    continue
+                raise ValueError(f"Missing key {key} in state dict")
+            for key in unexpected_keys:
+                raise ValueError(f"Unexpected key {key} in state dict")
+            print(f"Loaded roformer checkpoint from {path}")
+        elif type == 'roformer_vocal':
+            generator_state_dict = OrderedDict()
+            vocal_prefix = 'mask_estimators.3'
+            new_prefix = 'mask_estimators.0'
+            filtered_prefix = 'mask_estimators.'
+            for key, value in full_checkpoint.items():
+                if key.startswith(vocal_prefix):
+                    generator_state_dict[new_prefix + key[len(vocal_prefix):]] = value
+                elif key.startswith(filtered_prefix):
+                    continue
+                else:
+                    generator_state_dict[key] = value
+            self.generator.load_state_dict(generator_state_dict)
+            print(f"Loaded roformer vocal checkpoint from {path}")
+        else:
+            raise ValueError(f"Unknown checkpoint type: {type}")
         
     def _init_generator(self):
         model_cfg = self.hparams.model
@@ -115,11 +156,10 @@ class MusicRestorationModule(pl.LightningModule):
             return UNet.MelUNet(**model_cfg['params'])
         elif model_cfg['name'] == 'UFormer':
             return UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
+        elif model_cfg['name'] == 'BSRoFormer':
+            return BSRoformer.BSRoformer(**model_cfg['params'])
         else:
             raise ValueError(f"Unknown model name: {model_cfg['name']}")
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.generator(x)
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
         opt_g, opt_d = self.optimizers()
@@ -134,7 +174,7 @@ class MusicRestorationModule(pl.LightningModule):
         
         # --- Train Discriminator ---
         
-        generated = self(mixture)
+        generated = self.generator(mixture)
         if self.use_channel:
             target = rearrange(target, 'b c t -> (b c) t')
             mixture = rearrange(mixture, 'b c t -> (b c) t')
@@ -183,29 +223,6 @@ class MusicRestorationModule(pl.LightningModule):
         sch_g, sch_d = self.lr_schedulers()
         if sch_g: sch_g.step()
         if sch_d: sch_d.step()
-        
-    def common_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
-        target = batch['target']
-        mixture = batch['mixture']
-
-        if not self.use_channel:
-            # reshape both from (b, c, t) to ((b, c) t) for older models
-            target = rearrange(target, 'b c t -> (b c) t')
-            mixture = rearrange(mixture, 'b c t -> (b c) t')
-        
-        # Forward pass
-        generated = self(mixture)
-        if self.use_channel:
-            target = rearrange(target, 'b c t -> (b c) t')
-            mixture = rearrange(mixture, 'b c t -> (b c) t')
-            generated = rearrange(generated, 'b c t -> (b c) t')
-
-        loss_l1 = self.l1_loss(generated, target)
-        self.log(f'{mode}/loss_l1', loss_l1)
-        return loss_l1
-    
-    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
-        return self.common_step(batch, batch_idx, 'val')
 
     def configure_optimizers(self):
         # Generator Optimizer
@@ -230,9 +247,38 @@ class SimpleMusicRestorationModule(MusicRestorationModule):
     """
     Simplified PyTorch Lightning module for music source restoration.
     Uses only direct loss training without any GAN components.
-    """    
+    """
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self.automatic_optimization = True # no need to manually optimize
+        
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
         return self.common_step(batch, batch_idx, 'train')
+
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        return self.common_step(batch, batch_idx, 'val')
+    
+    def common_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
+        target = batch['target']
+        mixture = batch['mixture']
+
+        if not self.use_channel:
+            # reshape both from (b, c, t) to ((b, c) t) for older models
+            target = rearrange(target, 'b c t -> (b c) t')
+            mixture = rearrange(mixture, 'b c t -> (b c) t')
+        
+        if self.model_output_loss:
+            loss_l1 = self.generator(mixture, target)
+        else:
+            generated = self.generator(mixture)
+            if self.use_channel:
+                target = rearrange(target, 'b c t -> (b c) t')
+                mixture = rearrange(mixture, 'b c t -> (b c) t')
+                generated = rearrange(generated, 'b c t -> (b c) t')
+            loss_l1 = self.l1_loss(generated, target)
+            
+        self.log(f'{mode}/loss_l1', loss_l1, prog_bar=True)
+        return loss_l1
 
     def configure_optimizers(self):
         # Only generator optimizer needed
@@ -248,7 +294,11 @@ class SimpleMusicRestorationModule(MusicRestorationModule):
             warmup_steps = self.hparams.scheduler['warm_up_steps']
             lr_lambda = lambda step: min(1.0, (step + 1) / warmup_steps)
             scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-            return [optimizer], [scheduler]
+            scheduler_config = {
+            'scheduler': scheduler,
+            'interval': 'step'
+            }
+            return [optimizer], [scheduler_config]
         
         return optimizer
 
@@ -258,7 +308,7 @@ def main():
     args = parser.parse_args()
 
     with open(args.config, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=yaml.FullLoader)
 
     pl.seed_everything(42, workers=True)
 
