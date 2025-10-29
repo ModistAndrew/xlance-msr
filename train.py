@@ -348,6 +348,8 @@ def main():
         accelerator="gpu"
     )
     
+    trainer.validate(model_module, datamodule=data_module)
+    
     trainer.fit(model_module, datamodule=data_module)
 
 if __name__ == '__main__':

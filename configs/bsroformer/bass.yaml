@@ -1,5 +1,5 @@
 project_name: "bsroformer"
-exp_name: "bass"
+exp_name: "bass_v1"
 
 model:
   name: "BSRoFormer"
@@ -104,7 +104,7 @@ data:
   train_dataset:
     target_stem: "Bass"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
-    apply_augmentation: True
+    apply_augmentation: False
     snr_range: [0.0, 10.0]
   val_dataset:
     target_stem: "Bass"
