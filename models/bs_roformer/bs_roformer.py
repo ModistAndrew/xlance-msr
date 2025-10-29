@@ -339,6 +339,52 @@ class MaskEstimator(Module):
             outs.append(freq_out)
 
         return torch.cat(outs, dim=-1)
+    
+class MaskEstimatorResidual(nn.Module):
+    @beartype
+    def __init__(
+            self,
+            dim,
+            dim_inputs: Tuple[int, ...],
+            depth,
+            mlp_expansion_factor=4
+    ):
+        super().__init__()
+        self.dim_inputs = dim_inputs
+        self.to_freqs_mult = ModuleList([])
+        self.to_freqs_add = ModuleList([])
+        dim_hidden = dim * mlp_expansion_factor
+
+        for dim_in in dim_inputs:
+            mult_mlp = nn.Sequential(
+                MLP(dim, dim_in * 2, dim_hidden=dim_hidden, depth=depth),
+                nn.GLU(dim=-1)
+            )
+            self.to_freqs_mult.append(mult_mlp)
+            
+            add_mlp = nn.Sequential(
+                MLP(dim, dim_in * 2, dim_hidden=dim_hidden, depth=depth),
+                nn.GLU(dim=-1)
+            )
+            self.to_freqs_add.append(add_mlp)
+
+    def forward(self, x):
+        x = x.unbind(dim=-2)
+
+        mult_outs = []
+        add_outs = []
+
+        for band_features, mult_mlp, add_mlp in zip(x, self.to_freqs_mult, self.to_freqs_add):
+            mult_out = mult_mlp(band_features)
+            mult_outs.append(mult_out)
+            
+            add_out = add_mlp(band_features)
+            add_outs.append(add_out)
+
+        mult_mask = torch.cat(mult_outs, dim=-1)
+        add_residual = torch.cat(add_outs, dim=-1)
+        
+        return mult_mask, add_residual
 
 
 # main class
@@ -392,6 +438,7 @@ class BSRoformer(Module):
             use_torch_checkpoint=False,
             skip_connection=False,
             sage_attention=False,
+            residual=False,
     ):
         super().__init__()
 
@@ -400,6 +447,7 @@ class BSRoformer(Module):
         self.num_stems = num_stems
         self.use_torch_checkpoint = use_torch_checkpoint
         self.skip_connection = skip_connection
+        self.residual = residual
 
         self.layers = ModuleList([])
 
@@ -459,7 +507,12 @@ class BSRoformer(Module):
         self.mask_estimators = nn.ModuleList([])
 
         for _ in range(num_stems):
-            mask_estimator = MaskEstimator(
+            mask_estimator = MaskEstimatorResidual(
+                dim=dim,
+                dim_inputs=freqs_per_bands_with_complex,
+                depth=mask_estimator_depth,
+                mlp_expansion_factor=mlp_expansion_factor,
+            ) if self.residual else MaskEstimator(
                 dim=dim,
                 dim_inputs=freqs_per_bands_with_complex,
                 depth=mask_estimator_depth,
@@ -586,10 +639,23 @@ class BSRoformer(Module):
         num_stems = len(self.mask_estimators)
 
         if self.use_torch_checkpoint:
-            mask = torch.stack([checkpoint(fn, x, use_reentrant=False) for fn in self.mask_estimators], dim=1)
+            if self.residual:
+                raise NotImplementedError
+            else:
+                mask = torch.stack([checkpoint(fn, x, use_reentrant=False) for fn in self.mask_estimators], dim=1)
         else:
-            mask = torch.stack([fn(x) for fn in self.mask_estimators], dim=1)
-        mask = rearrange(mask, 'b n t (f c) -> b n f t c', c=2)
+            if self.residual:
+                mask_outputs = [fn(x) for fn in self.mask_estimators]
+                mult_mask = torch.stack([output[0] for output in mask_outputs], dim=1)
+                add_residual = torch.stack([output[1] for output in mask_outputs], dim=1)
+                mult_mask = rearrange(mult_mask, 'b n t (f c) -> b n f t c', c=2)
+                add_residual = rearrange(add_residual, 'b n t (f c) -> b n f t c', c=2)
+                mult_mask = torch.view_as_complex(mult_mask)
+                add_residual = torch.view_as_complex(add_residual)
+            else:
+                mask = torch.stack([fn(x) for fn in self.mask_estimators], dim=1)
+                mask = rearrange(mask, 'b n t (f c) -> b n f t c', c=2)
+                mask = torch.view_as_complex(mask)
 
         # modulate frequency representation
 
@@ -598,9 +664,11 @@ class BSRoformer(Module):
         # complex number multiplication
 
         stft_repr = torch.view_as_complex(stft_repr)
-        mask = torch.view_as_complex(mask)
 
-        stft_repr = stft_repr * mask
+        if self.residual:
+            stft_repr = stft_repr * mult_mask + add_residual
+        else:
+            stft_repr = stft_repr * mask
 
         # istft
 
