@@ -11,6 +11,7 @@ import numpy as np
 from tqdm import tqdm
 
 from models import MelRNN, MelRoFormer, UFormer, UNet
+from models.bs_roformer import bs_roformer as BSRoformer
 
 
 def load_ckpt_or_pth(path: str, map_location: str) -> Any:
@@ -42,6 +43,8 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
         generator = UNet.MelUNet(**model_cfg['params'])
     elif model_cfg['name'] == 'UFormer':
         generator = UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
+    elif model_cfg['name'] == 'BSRoFormer':
+        generator = BSRoformer.BSRoformer(**model_cfg['params'])
     else:
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
     
@@ -56,7 +59,8 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
 
 
 def process_audio(audio: np.ndarray, generator: nn.Module, device: str = 'cuda') -> np.ndarray:
-    use_channel = isinstance(generator, UFormer.UFormer)
+    use_channel = isinstance(generator, UFormer.UFormer) or isinstance(generator, BSRoformer.BSRoformer)
+    use_16_mix = isinstance(generator, BSRoformer.BSRoformer)
     """Process a single audio array through the generator."""
     # Convert to tensor: (channels, samples) -> (1, channels, samples)
     if audio.ndim == 1:
@@ -66,9 +70,15 @@ def process_audio(audio: np.ndarray, generator: nn.Module, device: str = 'cuda')
     if use_channel:
         audio_tensor = audio_tensor.unsqueeze(0) # Add batch dimension
     
-    # Run inference
-    with torch.no_grad():
-        output_tensor = generator(audio_tensor)
+    if use_16_mix:
+        with torch.autocast(device_type='cuda', dtype=torch.float16):
+            with torch.nn.attention.sdpa_kernel(backends=[torch.nn.attention.SDPBackend.MATH]):
+                with torch.no_grad():
+                    output_tensor = generator(audio_tensor)
+    else:
+        with torch.no_grad():
+            output_tensor = generator(audio_tensor)
+
     
     # Convert back to numpy: (1, channels, samples) -> (channels, samples)
     output_audio = output_tensor.cpu().numpy()
@@ -89,7 +99,7 @@ def main():
     
     # Load config
     with open(args.config, 'r') as f:
-        config = yaml.safe_load(f)
+        config = yaml.load(f, Loader=yaml.FullLoader)
     
     # Setup paths
     input_dir = Path(args.input_dir)
