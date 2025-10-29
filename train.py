@@ -223,6 +223,45 @@ class MusicRestorationModule(pl.LightningModule):
         sch_g, sch_d = self.lr_schedulers()
         if sch_g: sch_g.step()
         if sch_d: sch_d.step()
+        
+    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        target = batch['target']
+        mixture = batch['mixture']
+        
+        if not self.use_channel:
+            # reshape both from (b, c, t) to ((b, c) t)
+            target = rearrange(target, 'b c t -> (b c) t')
+            mixture = rearrange(mixture, 'b c t -> (b c) t')
+        
+        with torch.no_grad():
+            generated = self.generator(mixture)
+            
+            if self.use_channel:
+                target = rearrange(target, 'b c t -> (b c) t')
+                mixture = rearrange(mixture, 'b c t -> (b c) t')
+                generated = rearrange(generated, 'b c t -> (b c) t')
+        
+        loss_recon = self.loss_recon(generated, target)
+        
+        with torch.no_grad():
+            fake_scores, fake_fmaps = self.discriminator(generated.unsqueeze(1))
+            real_scores, real_fmaps = self.discriminator(target.unsqueeze(1))
+            
+            loss_adv, _ = self.loss_gen_adv(fake_scores)
+            
+            loss_feat = self.loss_feat(real_fmaps, fake_fmaps)
+        
+        loss_cfg = self.hparams.losses
+        g_loss = (
+            loss_recon * loss_cfg['lambda_recon'] + 
+            loss_adv * loss_cfg['lambda_gan'] + 
+            loss_feat * loss_cfg['lambda_feat']
+        )
+        
+        self.log('valid/g_loss', g_loss, prog_bar=True)
+        self.log('valid/loss_recon', loss_recon)
+        self.log('valid/loss_adv', loss_adv)
+        self.log('valid/loss_feat', loss_feat)
 
     def configure_optimizers(self):
         # Generator Optimizer
@@ -256,7 +295,7 @@ class SimpleMusicRestorationModule(MusicRestorationModule):
         return self.common_step(batch, batch_idx, 'train')
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
-        return self.common_step(batch, batch_idx, 'val')
+        self.common_step(batch, batch_idx, 'val')
     
     def common_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
         target = batch['target']
