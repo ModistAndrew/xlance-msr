@@ -114,59 +114,56 @@ class MusicRestorationModule(pl.LightningModule):
         path = self.hparams.checkpoint['path']
         type = self.hparams.checkpoint['type']
         full_checkpoint = torch.load(path)
-        if type == 'roformer':
-            generator_state_dict = OrderedDict()
-            filtered_prefix = 'mask_estimators.'
-            for key, value in full_checkpoint.items():
-                if key.startswith(filtered_prefix):
-                    continue
-                generator_state_dict[key] = value
-            missing_keys, unexpected_keys = self.generator.load_state_dict(generator_state_dict, strict=False)
-            for key in missing_keys:
-                if key.startswith(filtered_prefix):
-                    continue
-                raise ValueError(f"Missing key {key} in state dict")
-            for key in unexpected_keys:
-                raise ValueError(f"Unexpected key {key} in state dict")
-            print(f"Loaded roformer checkpoint from {path}")
-        if type == 'roformer_frozen':
-            generator_state_dict = OrderedDict()
-            filtered_prefix = 'mask_estimators.'
-            for key, value in full_checkpoint.items():
-                if key.startswith(filtered_prefix):
-                    continue
-                generator_state_dict[key] = value
-            missing_keys, unexpected_keys = self.generator.load_state_dict(generator_state_dict, strict=False)
-            for key in missing_keys:
-                if key.startswith(filtered_prefix):
-                    continue
-                raise ValueError(f"Missing key {key} in state dict")
-            for key in unexpected_keys:
-                raise ValueError(f"Unexpected key {key} in state dict")
-            print(f"Loaded roformer checkpoint from {path}")
-            param_dict = dict(self.generator.named_parameters())
-            frozen_count = 0
-            for key in param_dict.keys():
-                if key not in missing_keys: # freeze loaded
-                    param_dict[key].requires_grad = False
-                    frozen_count += 1
-                    print(f"Frozen: {key}")
-            print(f"Loaded roformer checkpoint from {path}")
-            print(f"Frozen {frozen_count} parameters from checkpoint")
-        elif type == 'roformer_vocal':
-            generator_state_dict = OrderedDict()
-            vocal_prefix = 'mask_estimators.3'
-            new_prefix = 'mask_estimators.0'
-            filtered_prefix = 'mask_estimators.'
-            for key, value in full_checkpoint.items():
-                if key.startswith(vocal_prefix):
-                    generator_state_dict[new_prefix + key[len(vocal_prefix):]] = value
-                elif key.startswith(filtered_prefix):
-                    continue
-                else:
+        components = type.split('_')
+        if components[0] == 'roformer':
+            frozen = ''
+            if components[-1] == 'frozen' or components[-1] == 'frozenall':
+                frozen = components[-1]
+                components.pop()
+            if len(components) == 1:
+                generator_state_dict = OrderedDict()
+                filtered_prefix = 'mask_estimators.'
+                for key, value in full_checkpoint.items():
+                    if key.startswith(filtered_prefix):
+                        continue
                     generator_state_dict[key] = value
-            self.generator.load_state_dict(generator_state_dict)
-            print(f"Loaded roformer vocal checkpoint from {path}")
+                missing_keys, unexpected_keys = self.generator.load_state_dict(generator_state_dict, strict=False)
+                for key in missing_keys:
+                    if key.startswith(filtered_prefix):
+                        continue
+                    raise ValueError(f"Missing key {key} in state dict")
+                for key in unexpected_keys:
+                    raise ValueError(f"Unexpected key {key} in state dict")
+                print(f"Loaded roformer checkpoint from {path}")
+            elif len(components) == 2:
+                instrument = components[1]
+                generator_state_dict = OrderedDict()
+                instrument_index = {'bass': 0, 'drums': 1, 'other': 2, 'vocals': 3, 'guitar': 4, 'piano': 5}
+                target_prefix = f'mask_estimators.{instrument_index[instrument]}' 
+                new_prefix = 'mask_estimators.0'
+                filtered_prefix = 'mask_estimators.'
+                for key, value in full_checkpoint.items():
+                    if key.startswith(target_prefix):
+                        generator_state_dict[new_prefix + key[len(target_prefix):]] = value
+                    elif key.startswith(filtered_prefix):
+                        continue
+                    else:
+                        generator_state_dict[key] = value
+                self.generator.load_state_dict(generator_state_dict)
+                print(f"Loaded roformer vocal checkpoint from {path}")
+            else:
+                raise ValueError(f"Unknown checkpoint type: {type}")
+            if frozen == 'frozen':
+                param_dict = dict(self.generator.named_parameters())
+                prefix = 'mask_estimators.0'
+                frozen_count = 0
+                for key in param_dict.keys():
+                    if not key.startswith(prefix):
+                        param_dict[key].requires_grad = False
+                        frozen_count += 1
+                        print(f"Frozen: {key}")
+                print(f"Loaded roformer checkpoint from {path}")
+                print(f"Frozen {frozen_count} parameters from checkpoint")
         else:
             raise ValueError(f"Unknown checkpoint type: {type}")
         
