@@ -129,6 +129,30 @@ class MusicRestorationModule(pl.LightningModule):
             for key in unexpected_keys:
                 raise ValueError(f"Unexpected key {key} in state dict")
             print(f"Loaded roformer checkpoint from {path}")
+        if type == 'roformer_frozen':
+            generator_state_dict = OrderedDict()
+            filtered_prefix = 'mask_estimators.'
+            for key, value in full_checkpoint.items():
+                if key.startswith(filtered_prefix):
+                    continue
+                generator_state_dict[key] = value
+            missing_keys, unexpected_keys = self.generator.load_state_dict(generator_state_dict, strict=False)
+            for key in missing_keys:
+                if key.startswith(filtered_prefix):
+                    continue
+                raise ValueError(f"Missing key {key} in state dict")
+            for key in unexpected_keys:
+                raise ValueError(f"Unexpected key {key} in state dict")
+            print(f"Loaded roformer checkpoint from {path}")
+            param_dict = dict(self.generator.named_parameters())
+            frozen_count = 0
+            for key in param_dict.keys():
+                if key not in missing_keys: # freeze loaded
+                    param_dict[key].requires_grad = False
+                    frozen_count += 1
+                    print(f"Frozen: {key}")
+            print(f"Loaded roformer checkpoint from {path}")
+            print(f"Frozen {frozen_count} parameters from checkpoint")
         elif type == 'roformer_vocal':
             generator_state_dict = OrderedDict()
             vocal_prefix = 'mask_estimators.3'
@@ -258,10 +282,10 @@ class MusicRestorationModule(pl.LightningModule):
             loss_feat * loss_cfg['lambda_feat']
         )
         
-        self.log('valid/g_loss', g_loss, prog_bar=True)
-        self.log('valid/loss_recon', loss_recon)
-        self.log('valid/loss_adv', loss_adv)
-        self.log('valid/loss_feat', loss_feat)
+        self.log('val/g_loss', g_loss, prog_bar=True)
+        self.log('val/loss_recon', loss_recon)
+        self.log('val/loss_adv', loss_adv)
+        self.log('val/loss_feat', loss_feat)
 
     def configure_optimizers(self):
         # Generator Optimizer
