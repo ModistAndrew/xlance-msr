@@ -107,10 +107,10 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Get all .flac files
-    audio_files = sorted(input_dir.glob("*.flac"))
+    audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav"))
     
     if len(audio_files) == 0:
-        print(f"No .flac files found in {input_dir}")
+        print(f"No .flac or .wav files found in {input_dir}")
         return
     
     print(f"Found {len(audio_files)} audio files")

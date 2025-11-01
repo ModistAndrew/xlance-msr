@@ -1,5 +1,5 @@
 project_name: "bsroformer"
-exp_name: "bass_valid"
+exp_name: "vox_valid"
 
 model:
   name: "BSRoFormer"
@@ -102,12 +102,12 @@ data:
   sample_rate: 48000
   clip_duration: 3.0
   train_dataset:
-    target_stem: "Bass"
+    target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
   val_dataset:
-    target_stem: "Bass"
+    target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
@@ -133,4 +133,4 @@ trainer:
 
 checkpoint:
   path: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/jinxuanzhu/MSRKit/checkpoints/BS-Rofo-SW-Fixed.ckpt"
-  type: "roformer_bass_frozen"
+  type: "roformer_vox_frozenall"

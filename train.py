@@ -120,6 +120,8 @@ class MusicRestorationModule(pl.LightningModule):
             if components[-1] == 'frozen' or components[-1] == 'frozenall':
                 frozen = components[-1]
                 components.pop()
+            if frozen == 'frozenall':
+                self.dummy = True
             if len(components) == 1:
                 generator_state_dict = OrderedDict()
                 filtered_prefix = 'mask_estimators.'
@@ -138,7 +140,7 @@ class MusicRestorationModule(pl.LightningModule):
             elif len(components) == 2:
                 instrument = components[1]
                 generator_state_dict = OrderedDict()
-                instrument_index = {'bass': 0, 'drums': 1, 'other': 2, 'vocals': 3, 'guitar': 4, 'piano': 5}
+                instrument_index = {'bass': 0, 'drums': 1, 'perc': 1, 'syn': 2, 'orch': 2, 'vox': 3, 'gtr': 4, 'key': 5}
                 target_prefix = f'mask_estimators.{instrument_index[instrument]}' 
                 new_prefix = 'mask_estimators.0'
                 filtered_prefix = 'mask_estimators.'
@@ -153,7 +155,7 @@ class MusicRestorationModule(pl.LightningModule):
                 print(f"Loaded roformer vocal checkpoint from {path}")
             else:
                 raise ValueError(f"Unknown checkpoint type: {type}")
-            if frozen == 'frozen':
+            if frozen:
                 param_dict = dict(self.generator.named_parameters())
                 prefix = 'mask_estimators.0'
                 frozen_count = 0
@@ -183,6 +185,8 @@ class MusicRestorationModule(pl.LightningModule):
             raise ValueError(f"Unknown model name: {model_cfg['name']}")
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        if self.dummy:
+            return None
         opt_g, opt_d = self.optimizers()
         
         target = batch['target']
@@ -313,6 +317,8 @@ class SimpleMusicRestorationModule(MusicRestorationModule):
         self.automatic_optimization = True # no need to manually optimize
         
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+        if self.dummy:
+            return None
         return self.common_step(batch, batch_idx, 'train')
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
