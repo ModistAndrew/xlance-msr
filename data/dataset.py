@@ -89,6 +89,7 @@ class RawStems(Dataset):
         snr_range: Tuple[float, float] = (0.0, 10.0),
         apply_augmentation: bool = True,
         rms_threshold: float = -40.0,
+        no_mixture: bool = False,
     ) -> None:
         self.root_directory = Path(root_directory)
         self.sr = sr
@@ -96,6 +97,7 @@ class RawStems(Dataset):
         self.snr_range = snr_range
         self.apply_augmentation = apply_augmentation
         self.rms_threshold = rms_threshold
+        self.no_mixture = no_mixture
         
         target_stem_parts = target_stem.split("_")
         self.target_stem_1 = target_stem_parts[0].strip()
@@ -224,19 +226,25 @@ class RawStems(Dataset):
             num_targets = random.randint(1, min(len(song_dict["target_stems"]), 5))
             selected_targets = random.sample(song_dict["target_stems"], num_targets)
             
-            num_others = random.randint(1, min(len(song_dict["others"]), 10))
-            selected_others = random.sample(song_dict["others"], num_others)
-
-            valid_starts = self._find_common_valid_start_seconds(selected_targets + selected_others)
+            if not self.no_mixture:
+                num_others = random.randint(1, min(len(song_dict["others"]), 10))
+                selected_others = random.sample(song_dict["others"], num_others)
+                valid_starts = self._find_common_valid_start_seconds(selected_targets + selected_others)
+            else:
+                valid_starts = self._find_common_valid_start_seconds(selected_targets)
 
             if valid_starts:
                 start_second = random.choice(valid_starts)
                 offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
                 
                 target_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_targets) / num_targets
-                other_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_others) / num_others
-
-                if not contains_audio_signal(target_mix) or not contains_audio_signal(other_mix):
+                if not self.no_mixture:
+                    other_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_others) / num_others
+                else:
+                    other_mix = np.zeros_like(target_mix)
+                
+                if not contains_audio_signal(target_mix) or not (contains_audio_signal(other_mix) or self.no_mixture):
+                    logger.warning(f"Skipping {song_dict} due to empty or invalid audio.")
                     continue
 
                 target_clean = target_mix.copy()
@@ -273,6 +281,7 @@ class RawStems(Dataset):
                     "target": np.nan_to_num(target)
                 }
 
+        logger.warning(f"No valid audio found for {song_dict}. Skipping.")
         return self.__getitem__(random.randint(0, len(self.audio_files) - 1))
 
     def __len__(self) -> int:
