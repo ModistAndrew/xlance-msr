@@ -11,6 +11,7 @@ from tqdm import tqdm
 import torchaudio.transforms as T
 import statistics # <-- 新增导入，用于计算平均值和标准差
 from audiobox_aesthetics.infer import initialize_predictor
+import pesq
 warnings.filterwarnings("ignore")
 
 try:
@@ -133,6 +134,48 @@ def find_matching_pairs(target_dir, output_dir):
     
     return pairs
 
+# --- 新增 PESQ 计算函数 ---
+def calculate_pesq(target_wav, output_wav, target_sr=48000, pesq_sr=16000):
+    """
+    计算 PESQ 分数 (通常使用 16kHz 宽带模式)。
+    target_wav 和 output_wav 必须是相同的单声道/双声道张量，且已对齐。
+    """
+    # 确保输入 Tensor 是单声道 (C=1)
+    # WAV shape 通常是 [C, L]. 如果 C > 1, 我们将其转换为单声道。
+    # 最简单的做法是取第一个声道 [0, :]
+    if target_wav.ndim > 1 and target_wav.shape[0] > 1:
+        # 提取第一个声道
+        target_wav = target_wav[0:1, :]
+    if output_wav.ndim > 1 and output_wav.shape[0] > 1:
+        # 提取第一个声道
+        output_wav = output_wav[0:1, :]
+    # 将 Tensor 转换为 numpy 数组
+    target_np = target_wav.squeeze(0).numpy()
+    output_np = output_wav.squeeze(0).numpy()
+    
+    # 确保是单声道进行 PESQ 计算
+    if target_np.ndim > 1:
+        # 如果是多声道，取第一个声道或平均 (这里取第一个声道)
+        target_np = target_np[0]
+        output_np = output_np[0]
+        
+    # 重采样到 PESQ 要求的采样率 (16000 Hz)
+    if target_sr != pesq_sr:
+        resampler = T.Resample(orig_freq=target_sr, new_freq=pesq_sr)
+        target_resampled = resampler(target_wav).squeeze(0).numpy()
+        output_resampled = resampler(output_wav).squeeze(0).numpy()
+    else:
+        target_resampled = target_np
+        output_resampled = output_np
+    
+    try:
+        # 使用 wideband (wb) 模式，因为我们重采样到 16kHz
+        score = pesq.pesq(pesq_sr, target_resampled, output_resampled, 'wb')
+        return score
+    except Exception as e:
+        print(f"Warning: PESQ calculation failed for a pair. Error: {e}")
+        return float('nan')
+    
 def main():
     parser = argparse.ArgumentParser(description="Calculate SI-SNR and FAD-CLAP for audio pairs. All audio is resampled to 48000Hz.")
     parser.add_argument("--file_list", type=str, help="Path to a text file with the format: target_path|output_path")
@@ -152,10 +195,10 @@ def main():
     
     # 初始化 AudioBox Aesthetics Predictor
     AXES_NAME = ["CE", "CU", "PC", "PQ"] 
-    LOCAL_AESTHETICS_CKPT = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRKit/audiobox/audiobox_aes_checkpoint.pt"
+    LOCAL_AESTHETICS_CKPT = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/EVAL_MODEL/audiobox/audiobox_aes_checkpoint.pt"
     try:
         print("\nLoading AudioBox Aesthetics predictor...")
-        aesthetics_predictor = initialize_predictor(ckpt=None)
+        aesthetics_predictor = initialize_predictor(ckpt=LOCAL_AESTHETICS_CKPT)
         print("AudioBox Aesthetics predictor loaded successfully.")
     except Exception as e:
         print(f"Error loading AudioBox Aesthetics predictor: {e}. Aesthetics calculation will be skipped.")
@@ -171,6 +214,7 @@ def main():
     all_target_paths = []
     all_output_paths = []
     all_sisnr_values = []
+    all_pesq_values = []
     all_aesthetics_values = {axis: [] for axis in AXES_NAME}
     # ----------------------------------------------------
     # PHASE 1: 遍历文件列表，计算 SI-SNR，收集路径
@@ -181,7 +225,7 @@ def main():
     
     TARGET_SR = 48000 
     
-    def calculate_sisnr(target_path, output_path):
+    def calculate_sisnr_and_pesq(target_path, output_path):
         if not os.path.exists(target_path) or not os.path.exists(output_path):
             raise Exception(f"Skipping, file not found: {target_path} -> {output_path}")
         target_wav = load_audio(target_path, TARGET_SR)
@@ -195,14 +239,19 @@ def main():
         output_wav = output_wav[..., :min_len]
         if target_wav.shape[-1] == 0:
             raise Exception(f"Skipping, zero-length waveform: {target_path} -> {output_path}")
+        ###SISNR part
         sisnr_val = sisnr_calculator(output_wav, target_wav)
         all_sisnr_values.append(sisnr_val.item())
-        print(f"{target_path}|{output_path}|{sisnr_val.item():.4f}")
+        ###PESQ part
+        pesq_val = calculate_pesq(target_wav, output_wav, TARGET_SR)
+        all_pesq_values.append(pesq_val)
+        
+        print(f"{target_path}|{output_path}|SI-SNR:{sisnr_val.item():.4f}|PESQ:{pesq_val:.4f}")
         all_target_paths.append(target_path)
         all_output_paths.append(output_path)
     
     if args.file_list:
-        with open(args.file_list, 'r') as f:
+        with open(args.file_list, 'r') as sf:
             for line in tqdm(f.readlines(), desc="  Processing audio pairs", ncols=100):
                 line = line.strip()
                 if not line or '|' not in line:
@@ -210,7 +259,7 @@ def main():
 
                 try:
                     target_path, output_path = [p.strip() for p in line.split('|')]
-                    calculate_sisnr(target_path, output_path)
+                    calculate_sisnr_and_pesq(target_path, output_path)
                 except Exception:
                     print(f"Error processing a pair: {e}")
                     continue
@@ -220,7 +269,7 @@ def main():
         print(f"Found {len(pairs)} file pairs")
         for target_path, output_path in pairs:
             try:
-                calculate_sisnr(target_path, output_path)
+                calculate_sisnr_and_pesq(target_path, output_path)
             except Exception as e:
                 print(f"Error processing {target_path} -> {output_path}: {e}")
                 continue
@@ -282,10 +331,10 @@ def main():
     results_file.write("\n--- Pairwise Metrics ---\n")
     
     # 动态构建列头字符串
-    header_sisnr = f"{'Target Filename':<30}|{'Output Filename':<30}|{'SI-SNR (dB)':<15}"
-    header_aesthetics = "".join([f"|{axis:<10}" for axis in AXES_NAME]) # CE, CU, PC, PQ
-    results_file.write(header_sisnr + header_aesthetics + "\n")
-    
+    header_metrics = f"{'Target Filename':<30}|{'Output Filename':<30}|{'SI-SNR (dB)':<15}|{'PESQ':<8}" # <-- 新增 PESQ
+    header_aesthetics = "".join([f"|{axis:<10}" for axis in AXES_NAME]) 
+    results_file.write(header_metrics + header_aesthetics + "\n")
+        
     print("\n--- Writing results to file ---")
     
     # ... (循环 i in range(num_pairs) 不变)
@@ -294,11 +343,13 @@ def main():
         target_path = all_target_paths[i]
         output_path = all_output_paths[i]
         sisnr_item = all_sisnr_values[i]
+        pesq_item = all_pesq_values[i] # <-- 获取 PESQ 分数
         
         target_filename = os.path.basename(target_path)
         output_filename = os.path.basename(output_path)
         # 构造 SI-SNR 部分
-        result_line = f"{target_filename:<30}|{output_filename:<30}|{sisnr_item:<15.4f}"
+        pesq_str = f"{pesq_item:<8.4f}" if not np.isnan(pesq_item) else "N/A   "
+        result_line = f"{target_filename:<30}|{output_filename:<30}|{sisnr_item:<15.4f}|{pesq_str}" # <-- 写入 PESQ
         
         # 构造 Aesthetics 部分
         aesthetics_part = ""
@@ -328,8 +379,18 @@ def main():
     else:
         results_file.write("No valid SI-SNR values were calculated.\n")
 
+    # 新增 PESQ 统计
+    if all_pesq_values:
+        valid_pesq_scores = [s for s in all_pesq_values if not np.isnan(s)]
+        if valid_pesq_scores:
+            avg_pesq = statistics.mean(valid_pesq_scores)
+            std_pesq = statistics.stdev(valid_pesq_scores) if len(valid_pesq_scores) > 1 else 0.0
+            results_file.write(f"\nPESQ Average: {avg_pesq:.4f}\n")
+            results_file.write(f"PESQ Std Dev: {std_pesq:.4f} (from {len(valid_pesq_scores)} samples)\n")
+        else:
+            results_file.write("\nNo valid PESQ values were calculated.\n")
+            
     # Aesthetics 统计
-    # 2. Aesthetics 统计 (循环处理 4 个轴)
     results_file.write("\n--- Aesthetics MOS ---\n")
     for axis in AXES_NAME:
         scores = all_aesthetics_values[axis]
@@ -358,9 +419,9 @@ def main():
     try:
         results_file.write(f"\nTotal pairs for FAD-CLAP: {len(all_target_paths)}\n")
         print("Loading CLAP model...")
-        LOCAL_MODEL_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRKit/clap-model"  # 您下载的模型路径
-        clap_model = ClapModel.from_pretrained("laion/clap-htsat-unfused")
-        clap_processor = ClapProcessor.from_pretrained("laion/clap-htsat-unfused")
+        LOCAL_MODEL_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/EVAL_MODEL/clap-model"  # 您下载的模型路径
+        clap_model = ClapModel.from_pretrained(LOCAL_MODEL_PATH)
+        clap_processor = ClapProcessor.from_pretrained(LOCAL_MODEL_PATH)
         clap_model.eval()
         print("CLAP model loaded successfully.")
     except Exception as e:
