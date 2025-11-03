@@ -9,6 +9,7 @@ from typing import List, Optional, Dict, Union, Tuple, Any
 from torch.utils.data import Dataset, Sampler
 from tqdm import tqdm
 from data.augment import StemAugmentation, MixtureAugmentation
+from data.moise_taxonomy import get_banned_other_pairs, get_target_stem_pairs
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ class RawStems(Dataset):
         apply_augmentation: bool = True,
         rms_threshold: float = -40.0,
         no_mixture: bool = False,
+        moisesdb: bool = False,
     ) -> None:
         self.root_directory = Path(root_directory)
         self.sr = sr
@@ -99,20 +101,28 @@ class RawStems(Dataset):
         self.rms_threshold = rms_threshold
         self.no_mixture = no_mixture
         
-        target_stem_parts = target_stem.split("_")
-        self.target_stem_1 = target_stem_parts[0].strip()
-        self.target_stem_2 = target_stem_parts[1].strip() if len(target_stem_parts) > 1 else None
+        if moisesdb:
+            self.target_stems = get_target_stem_pairs(target_stem)
+            self.banned_others = get_banned_other_pairs(target_stem)
+        else:
+            target_stem_parts = target_stem.split("_")
+            target_stem_1 = target_stem_parts[0].strip()
+            target_stem_2 = target_stem_parts[1].strip() if len(target_stem_parts) > 1 else None
+            self.target_stems = [(target_stem_1, target_stem_2)]
+            self.banned_others = []
         
         logger.info(f"Scanning '{self.root_directory}' for songs containing stem '{target_stem}'...")
         self.folders = []
         for song_dir in self.root_directory.iterdir():
             if song_dir.is_dir():
-                target_path = song_dir / self.target_stem_1
-                if self.target_stem_2:
-                    target_path /= self.target_stem_2
-                
-                if target_path.exists() and target_path.is_dir():
-                    self.folders.append(song_dir)
+                for (target_stem_1, target_stem_2) in self.target_stems:
+                    target_path = song_dir / target_stem_1
+                    if target_stem_2:
+                        target_path /= target_stem_2
+
+                    if target_path.exists() and target_path.is_dir():
+                        self.folders.append(song_dir)
+                        break
         
         if not self.folders:
             raise FileNotFoundError(f"No subdirectories in '{self.root_directory}' were found containing the stem path '{target_stem}'. "
@@ -121,6 +131,7 @@ class RawStems(Dataset):
 
         self.audio_files = self._index_audio_files()
         if not self.audio_files: raise ValueError("No audio files found.")
+        logger.info(f"Indexed {len(self.audio_files)} audio files.")
             
         self.activity_masks = self._compute_activity_masks()
         
@@ -197,21 +208,22 @@ class RawStems(Dataset):
         indexed_songs = []
         for folder in tqdm(self.folders, desc="Indexing audio files"):
             song_dict = {"target_stems": [], "others": []}
-            target_folder = folder / self.target_stem_1
-            if self.target_stem_2: target_folder /= self.target_stem_2
-            
-            if target_folder.exists():
-                song_dict["target_stems"].extend(p for p in target_folder.rglob('*') if p.suffix.lower() in AUDIO_EXTENSIONS)
-            
+            for (target_stem_1, target_stem_2) in self.target_stems:
+                target_folder = folder / target_stem_1
+                if target_stem_2: target_folder /= target_stem_2
+                
+                if target_folder.exists():
+                    song_dict["target_stems"].extend(p for p in target_folder.rglob('*') if p.suffix.lower() in AUDIO_EXTENSIONS)
+                
             for p in folder.rglob('*'):
                 if p.suffix.lower() in AUDIO_EXTENSIONS:
                     try:
                         relative_path = p.relative_to(folder)
                         parts = relative_path.parts
-                        is_target = len(parts) > 0 and parts[0] == self.target_stem_1 and \
-                                    (self.target_stem_2 is None or (len(parts) > 1 and parts[1] == self.target_stem_2))
-                        if not is_target:
-                            song_dict["others"].append(p)
+                        for (target_stem_1, target_stem_2) in self.target_stems + self.banned_others:
+                            if len(parts) > 0 and parts[0] == target_stem_1 and (target_stem_2 is None or (len(parts) > 1 and parts[1] == target_stem_2)):
+                                raise ValueError
+                        song_dict["others"].append(p)
                     except ValueError:
                         continue
             
@@ -244,7 +256,7 @@ class RawStems(Dataset):
                     other_mix = np.zeros_like(target_mix)
                 
                 if not contains_audio_signal(target_mix) or not (contains_audio_signal(other_mix) or self.no_mixture):
-                    logger.warning(f"Skipping {song_dict} due to empty or invalid audio.")
+                    # logger.warning(f"Skipping {song_dict} due to empty or invalid audio.")
                     continue
 
                 target_clean = target_mix.copy()
@@ -281,7 +293,7 @@ class RawStems(Dataset):
                     "target": np.nan_to_num(target)
                 }
 
-        logger.warning(f"No valid audio found for {song_dict}. Skipping.")
+        # logger.warning(f"No valid audio found for {song_dict}. Skipping.")
         return self.__getitem__(random.randint(0, len(self.audio_files) - 1))
 
     def __len__(self) -> int:

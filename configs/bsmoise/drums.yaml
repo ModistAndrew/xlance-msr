@@ -1,5 +1,5 @@
 project_name: "bsmoise"
-exp_name: "vox"
+exp_name: "drums"
 
 model:
   name: "BSRoFormer"
@@ -102,13 +102,13 @@ data:
   sample_rate: 48000
   clip_duration: 3.0
   train_dataset:
-    target_stem: "vox"
+    target_stem: "drums"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
     moisesdb: True
   val_dataset:
-    target_stem: "Voc"
+    target_stem: "Rhy_DK"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
