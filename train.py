@@ -54,6 +54,7 @@ class MusicRestorationDataModule(pl.LightningDataModule):
         super().__init__()
         self.config = config
         self.train_dataset = None
+        self.moises_train_dataset = None
         self.val_dataset = None
 
     def setup(self, stage: str | None = None):
@@ -61,16 +62,37 @@ class MusicRestorationDataModule(pl.LightningDataModule):
             "sr": self.config['sample_rate'],
             "clip_duration": self.config['clip_duration'],
         }
-        self.train_dataset = RawStems(**self.config['train_dataset'], **common_params)
+        # --- 训练数据集 (混合采样) ---
+        train_cfg = self.config['train_dataset']
+        #  RawStems
+        self.rawstems_train_dataset = RawStems(
+            target_stem=train_cfg['target_stem'], 
+            root_directory=train_cfg['rawstems_root_directory'], # 假设配置中新增 RawStems 路径
+            **train_cfg['common_params'], 
+            **common_params
+        )
+        # MoisesDB
+        from data.dataset import MoisesDBAdapter 
+        self.moises_train_dataset = MoisesDBAdapter(
+            target_stem=train_cfg['target_stem'],
+            root_directory=train_cfg['moisesdb_root_directory'], # 假设配置中新增 MoisesDB 路径
+            **train_cfg['common_params'], 
+            **common_params
+        )
+        # 保留RawStem的val dataset
         self.val_dataset = RawStems(**self.config['val_dataset'], **common_params)
     
     def train_dataloader(self):
-        sampler = InfiniteSampler(self.train_dataset)
-        return DataLoader(
-            self.train_dataset,
-            sampler=sampler,
-            **self.config['dataloader_params']
+        from data.dataset import create_weighted_dataloader
+        dataloader = create_weighted_dataloader(
+            rawstems_dataset=self.rawstems_train_dataset,
+            moisesdb_dataset=self.moises_train_dataset,
+            target_ratio=self.config['train_dataset'].get('rawstems_ratio', 0.5), # 从配置中读取比例
+            batch_size=self.config['dataloader_params']['batch_size'],
+            num_workers=self.config['dataloader_params']['num_workers']
+            # 其他 dataloader_params (num_workers, pin_memory) 需手动传入或在 create_weighted_dataloader 中处理
         )
+        return dataloader
         
     def val_dataloader(self):
         return DataLoader(
