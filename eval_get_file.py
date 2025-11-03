@@ -74,9 +74,9 @@ def create_file_list(
 
 # 您的输出（例如：去噪后的文件，在原metric代码中作为 output_path/preds）
 # 文件夹路径
-MIXTURE_DIR = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/music-source-restoration/msr_test_set/Gtr"  
+MIXTURE_DIR = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/music-source-restoration/Result/Plus_Guitars_gan_1"  
 # 文件命名模式。(\d+) 代表任意长度的数字。
-MIXTURE_PATTERN = r"mixture_(\d+)\.wav" 
+MIXTURE_PATTERN = r"restored_mixture_(\d+)\.wav" 
 
 # 您的目标（例如：干净的原始文件，在原metric代码中作为 target_path/target）
 # 文件夹路径
