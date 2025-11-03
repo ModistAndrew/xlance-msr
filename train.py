@@ -95,6 +95,7 @@ class MusicRestorationModule(pl.LightningModule):
 
         # 1. Generator
         self.generator = self._init_generator()
+        self.dummy = False
         if hasattr(self.hparams, 'checkpoint'):
             self.load_generator_state_dict()
 
