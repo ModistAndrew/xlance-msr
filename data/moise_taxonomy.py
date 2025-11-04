@@ -119,10 +119,6 @@ TARGET_STEM_MAPPING = {
         ("other_keys", "synth_lead")
     ],
     "orch": [
-        ("bass", "contrabass_double_bass_bass_of_instrings"),
-        ("bass", "tuba_bass_of_brass"),
-        ("bass", "bassoon_bass_of_woodwind"),
-        ("bowed_strings", "violin_solo"),
         ("bowed_strings", "viola_solo"),
         ("bowed_strings", "cello_solo"), 
         ("bowed_strings", "violin_section"),
@@ -135,6 +131,10 @@ TARGET_STEM_MAPPING = {
     ],
     "other": [
         ("vocals", "other_vocoder_beatboxing_etc"),
+        ("bass", "contrabass_double_bass_bass_of_instrings"),
+        ("bass", "tuba_bass_of_brass"),
+        ("bass", "bassoon_bass_of_woodwind"),
+        ("bowed_strings", "violin_solo"),
         ("drums", "drum_machine"),
         ("other", "fx_processed_sound_scratches_gun_shots_explosions_etc"),
         ("other", "click_track"),
