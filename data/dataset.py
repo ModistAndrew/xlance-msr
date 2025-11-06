@@ -92,6 +92,7 @@ class RawStems(Dataset):
         rms_threshold: float = -40.0,
         no_mixture: bool = False,
         moisesdb: bool = False,
+        random_mixture: bool = False,
     ) -> None:
         self.root_directory = Path(root_directory)
         self.sr = sr
@@ -100,6 +101,7 @@ class RawStems(Dataset):
         self.apply_augmentation = apply_augmentation
         self.rms_threshold = rms_threshold
         self.no_mixture = no_mixture
+        self.random_mixture = random_mixture
         
         if moisesdb:
             self.target_stems = get_target_stem_pairs(target_stem)
@@ -137,6 +139,8 @@ class RawStems(Dataset):
         logger.info(f"Indexed {len(self.audio_files)} audio files.")
             
         self.activity_masks = self._compute_activity_masks()
+        self._filter_activity_masks()
+        logger.info(f"{len(self.audio_files)} audio files after filtering.")
         
         self.stem_augmentation = StemAugmentation()
         self.mixture_augmentation = MixtureAugmentation()
@@ -182,8 +186,24 @@ class RawStems(Dataset):
                 mask[:len(avg_loud_enough)] = avg_loud_enough
                 activity_masks[path_str] = mask
             else:
-                print(f"Warning: No RMS data found for {path_str}")
+                logger.warning(f"No RMS data found for {path_str}")
         return activity_masks
+    
+    def _filter_activity_masks(self) -> None:
+        def filter_stem(stem: Path) -> bool:
+            if not self._find_common_valid_start_seconds([stem]):
+                logger.warning(f"Skipping {stem} due to silence.")
+                return False
+            return True
+        def filter_song(song: Dict[str, List[Path]]) -> bool:
+            if song["target_stems"] and song["others"]:
+                return True
+            logger.warning(f"Skipping {song} due to empty or invalid audio.")
+            return False
+        for song in self.audio_files:
+            song["target_stems"] = list(filter(filter_stem, song["target_stems"]))
+            song["others"] = list(filter(filter_stem, song["others"]))
+        self.audio_files = list(filter(filter_song, self.audio_files))
 
     def _find_common_valid_start_seconds(self, file_paths: List[Path]) -> List[int]:
         if not self.activity_masks: return []
@@ -224,7 +244,7 @@ class RawStems(Dataset):
                         relative_path = p.relative_to(folder)
                         parts = relative_path.parts
                         if not (len(parts) > 0 and parts[0] in self.allowed_others):
-                            print(f"Warning: Skipping {p} due to invalid stem.")
+                            logger.warning(f"Skipping {p} due to unknown stem.")
                             raise ValueError
                         for (target_stem_1, target_stem_2) in self.target_stems + self.banned_others:
                             if len(parts) > 0 and parts[0] == target_stem_1 and (target_stem_2 is None or (len(parts) > 1 and parts[1] == target_stem_2)):
@@ -235,7 +255,17 @@ class RawStems(Dataset):
             
             if song_dict["target_stems"] and song_dict["others"]:
                 indexed_songs.append(song_dict)
+            else:
+                logger.warning(f"Skipping {folder} due to empty or invalid audio.")
         return indexed_songs
+    
+    def load_audio_randomly(self, index: int, target: bool, offset: float, duration: float, sr: int) -> np.ndarray:
+        song_dict = self.audio_files[index]
+        selected = random.choice(song_dict["target_stems"] if target else song_dict["others"])
+        valid_starts = self._find_common_valid_start_seconds([selected])
+        start_second = random.choice(valid_starts)
+        offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
+        return load_audio(selected, offset, duration, sr)
     
     def __getitem__(self, index: int) -> Dict[str, Any]:
         song_dict = self.audio_files[index]
@@ -244,7 +274,7 @@ class RawStems(Dataset):
             num_targets = random.randint(1, min(len(song_dict["target_stems"]), 5))
             selected_targets = random.sample(song_dict["target_stems"], num_targets)
             
-            if not self.no_mixture:
+            if not self.no_mixture and not self.random_mixture:
                 num_others = random.randint(1, min(len(song_dict["others"]), 10))
                 selected_others = random.sample(song_dict["others"], num_others)
                 valid_starts = self._find_common_valid_start_seconds(selected_targets + selected_others)
@@ -256,8 +286,12 @@ class RawStems(Dataset):
                 offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
                 
                 target_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_targets) / num_targets
-                if not self.no_mixture:
+                if not self.no_mixture and not self.random_mixture:
                     other_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_others) / num_others
+                elif self.random_mixture:
+                    num_others = random.randint(1, 10)
+                    selected_indices = random.sample(range(len(self.audio_files)), num_others)
+                    other_mix = sum(self.load_audio_randomly(index, False, offset, self.clip_duration, self.sr) for index in selected_indices) / num_others
                 else:
                     other_mix = np.zeros_like(target_mix)
                 

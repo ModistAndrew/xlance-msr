@@ -1,5 +1,5 @@
 project_name: "bsmoise"
-exp_name: "vox"
+exp_name: "vox_random"
 
 model:
   name: "BSRoFormer"
@@ -107,6 +107,7 @@ data:
     apply_augmentation: False
     snr_range: [0.0, 10.0]
     moisesdb: True
+    random_mixture: True
   val_dataset:
     target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
