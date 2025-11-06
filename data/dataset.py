@@ -49,17 +49,6 @@ def get_audio_duration(file_path: Path) -> float:
         logger.error(f"Error getting duration for {file_path}: {e}")
         return 0.0
 
-def load_audio(file_path: Path, offset: float, duration: float, sr: int) -> np.ndarray:
-    try:
-        audio, _ = librosa.load(file_path, sr=sr, offset=offset, duration=duration, mono=False)
-        if len(audio.shape) == 1: audio = audio.reshape(1, -1)
-        if audio.shape[1] == 0: return np.zeros((2, int(sr * duration)))
-        if audio.shape[0] == 1: audio = np.vstack([audio, audio])
-        return audio
-    except Exception as e:
-        logger.error(f"Error loading {file_path} at offset {offset}: {e}")
-        return np.zeros((2, int(sr * duration)))
-
 def mix_to_target_snr(target: np.ndarray, noise: np.ndarray, target_snr_db: float) -> Tuple[np.ndarray, float, float]:
     target_power, noise_power = np.mean(target ** 2), np.mean(noise ** 2)
     if noise_power < 1e-8: return target.copy(), 1.0, 0.0
@@ -144,6 +133,15 @@ class RawStems(Dataset):
         
         self.stem_augmentation = StemAugmentation()
         self.mixture_augmentation = MixtureAugmentation()
+        
+    def load_audio(self, file_path: Path, offset: float, duration: float, sr: int, aug: bool) -> np.ndarray:
+        audio, _ = librosa.load(file_path, sr=sr, offset=offset, duration=duration, mono=False)
+        if len(audio.shape) == 1: audio = audio.reshape(1, -1)
+        if audio.shape[1] == 0: return np.zeros((2, int(sr * duration)))
+        if audio.shape[0] == 1: audio = np.vstack([audio, audio])
+        if aug and self.apply_augmentation:
+            audio = self.stem_augmentation.apply(audio, self.sr)
+        return audio
 
     def _compute_activity_masks(self) -> Dict[str, np.ndarray]:
         rms_analysis_path = self.root_directory / "rms_analysis.jsonl"
@@ -259,13 +257,13 @@ class RawStems(Dataset):
                 logger.warning(f"Skipping {folder} due to empty or invalid audio.")
         return indexed_songs
     
-    def load_audio_randomly(self, index: int, target: bool, offset: float, duration: float, sr: int) -> np.ndarray:
+    def load_other_audio_randomly(self, index: int, offset: float, duration: float, sr: int, aug: bool) -> np.ndarray:
         song_dict = self.audio_files[index]
-        selected = random.choice(song_dict["target_stems"] if target else song_dict["others"])
+        selected = random.choice(song_dict["others"])
         valid_starts = self._find_common_valid_start_seconds([selected])
         start_second = random.choice(valid_starts)
         offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
-        return load_audio(selected, offset, duration, sr)
+        return self.load_audio(selected, offset, duration, sr, aug)
     
     def __getitem__(self, index: int) -> Dict[str, Any]:
         song_dict = self.audio_files[index]
@@ -285,13 +283,13 @@ class RawStems(Dataset):
                 start_second = random.choice(valid_starts)
                 offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
                 
-                target_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_targets) / num_targets
+                target_mix = sum(self.load_audio(p, offset, self.clip_duration, self.sr, False) for p in selected_targets) / num_targets # aug later
                 if not self.no_mixture and not self.random_mixture:
-                    other_mix = sum(load_audio(p, offset, self.clip_duration, self.sr) for p in selected_others) / num_others
+                    other_mix = sum(self.load_audio(p, offset, self.clip_duration, self.sr, True) for p in selected_others) / num_others
                 elif self.random_mixture:
                     num_others = random.randint(1, 10)
                     selected_indices = random.sample(range(len(self.audio_files)), num_others)
-                    other_mix = sum(self.load_audio_randomly(index, False, offset, self.clip_duration, self.sr) for index in selected_indices) / num_others
+                    other_mix = sum(self.load_other_audio_randomly(index, offset, self.clip_duration, self.sr, True) for index in selected_indices) / num_others
                 else:
                     other_mix = np.zeros_like(target_mix)
                 
