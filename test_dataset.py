@@ -17,7 +17,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Train a Music Source Restoration Model")
     parser.add_argument("--config", type=str, required=True, help="Path to the config file.")
-    parser.add_argument("--output_dir", type=str, required=True, help="Output dir")
+    parser.add_argument("--output_dir", type=str, default="test/test_dataset", help="Output dir")
     parser.add_argument("--num_samples", type=int, default=10, help="Number of samples to generate")
     args = parser.parse_args()
     

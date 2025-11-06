@@ -1,5 +1,5 @@
 project_name: "bsmoise"
-exp_name: "orch"
+exp_name: "orch_v1"
 
 model:
   name: "BSRoFormer"
