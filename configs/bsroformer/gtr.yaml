@@ -1,5 +1,5 @@
 project_name: "bsroformer"
-exp_name: "gtr_v1"
+exp_name: "gtr_v2"
 
 model:
   name: "BSRoFormer"
