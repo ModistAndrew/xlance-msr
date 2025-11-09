@@ -6,7 +6,7 @@ from typing import Dict, Any, List
 from einops import rearrange
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
@@ -65,6 +65,9 @@ class MusicRestorationDataModule(pl.LightningDataModule):
         }
         self.train_dataset = RawStems(**self.config['train_dataset'], **common_params)
         self.val_dataset = RawStems(**self.config['val_dataset'], **common_params)
+        if 'train_dataset1' in self.config:
+            train_dataset1 = RawStems(**self.config['train_dataset1'], **common_params)
+            self.train_dataset = ConcatDataset([self.train_dataset, train_dataset1])
     
     def train_dataloader(self):
         sampler = InfiniteSampler(self.train_dataset)

@@ -190,13 +190,13 @@ class RawStems(Dataset):
     def _filter_activity_masks(self) -> None:
         def filter_stem(stem: Path) -> bool:
             if not self._find_common_valid_start_seconds([stem]):
-                logger.warning(f"Skipping {stem} due to silence.")
+                # logger.warning(f"Skipping {stem} due to silence.")
                 return False
             return True
         def filter_song(song: Dict[str, List[Path]]) -> bool:
             if song["target_stems"] and song["others"]:
                 return True
-            logger.warning(f"Skipping {song} due to empty or invalid audio.")
+            # logger.warning(f"Skipping {song} due to empty or invalid audio.")
             return False
         for song in self.audio_files:
             song["target_stems"] = list(filter(filter_stem, song["target_stems"]))
@@ -242,7 +242,7 @@ class RawStems(Dataset):
                         relative_path = p.relative_to(folder)
                         parts = relative_path.parts
                         if not (len(parts) > 0 and parts[0] in self.allowed_others):
-                            logger.warning(f"Skipping {p} due to unknown stem.")
+                            # logger.warning(f"Skipping {p} due to unknown stem.")
                             raise ValueError
                         for (target_stem_1, target_stem_2) in self.target_stems + self.banned_others:
                             if len(parts) > 0 and parts[0] == target_stem_1 and (target_stem_2 is None or (len(parts) > 1 and parts[1] == target_stem_2)):
@@ -253,8 +253,8 @@ class RawStems(Dataset):
             
             if song_dict["target_stems"] and song_dict["others"]:
                 indexed_songs.append(song_dict)
-            else:
-                logger.warning(f"Skipping {folder} due to empty or invalid audio.")
+            # else:
+                # logger.warning(f"Skipping {folder} due to empty or invalid audio.")
         return indexed_songs
     
     def load_other_audio_randomly(self, index: int, offset: float, duration: float, sr: int, aug: bool) -> np.ndarray:
