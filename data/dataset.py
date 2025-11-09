@@ -80,6 +80,7 @@ class RawStems(Dataset):
         apply_augmentation: bool = True,
         rms_threshold: float = -40.0,
         no_mixture: bool = False,
+        no_mixture_all: bool = False,
         moisesdb: bool = False,
         random_mixture: bool = False,
     ) -> None:
@@ -90,6 +91,7 @@ class RawStems(Dataset):
         self.apply_augmentation = apply_augmentation
         self.rms_threshold = rms_threshold
         self.no_mixture = no_mixture
+        self.no_mixture_all = no_mixture_all
         self.random_mixture = random_mixture
         
         if moisesdb:
@@ -269,10 +271,40 @@ class RawStems(Dataset):
         song_dict = self.audio_files[index]
         
         for _ in range(100):
-            num_targets = random.randint(1, min(len(song_dict["target_stems"]), 5))
-            selected_targets = random.sample(song_dict["target_stems"], num_targets)
-            
-            if not self.no_mixture and not self.random_mixture:
+            if self.no_mixture_all:
+                selected_target = random.choice(song_dict["target_stems"] + song_dict["others"])
+                valid_starts = self._find_common_valid_start_seconds([selected_target])
+                if not valid_starts: 
+                    continue
+                start_second = random.choice(valid_starts)
+                offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
+                target = self.load_audio(selected_target, offset, self.clip_duration, self.sr, False)
+                if not contains_audio_signal(target):
+                    continue
+                target_clean = target.copy()
+                target_augmented = self.stem_augmentation.apply(target, self.sr) if self.apply_augmentation else target
+                return {
+                    "mixture": np.nan_to_num(target_augmented),
+                    "target": np.nan_to_num(target_clean)
+                }
+            if self.no_mixture:
+                num_targets = random.randint(1, min(len(song_dict["target_stems"]), 5))
+                selected_targets = random.sample(song_dict["target_stems"], num_targets)
+                valid_starts = self._find_common_valid_start_seconds(selected_targets)
+                if not valid_starts:
+                    continue
+                start_second = random.choice(valid_starts)
+                offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
+                target = sum(self.load_audio(p, offset, self.clip_duration, self.sr, False) for p in selected_targets) / num_targets
+                if not contains_audio_signal(target):
+                    continue
+                target_clean = target.copy()
+                target_augmented = self.stem_augmentation.apply(target, self.sr) if self.apply_augmentation else target
+                return {
+                    "mixture": np.nan_to_num(target_augmented),
+                    "target": np.nan_to_num(target_clean)
+                }
+            if not self.random_mixture:
                 num_others = random.randint(1, min(len(song_dict["others"]), 10))
                 selected_others = random.sample(song_dict["others"], num_others)
                 valid_starts = self._find_common_valid_start_seconds(selected_targets + selected_others)
@@ -284,16 +316,14 @@ class RawStems(Dataset):
                 offset = start_second + random.uniform(0, 1.0 - (self.clip_duration % 1.0 or 1.0))
                 
                 target_mix = sum(self.load_audio(p, offset, self.clip_duration, self.sr, False) for p in selected_targets) / num_targets # aug later
-                if not self.no_mixture and not self.random_mixture:
+                if not self.random_mixture:
                     other_mix = sum(self.load_audio(p, offset, self.clip_duration, self.sr, True) for p in selected_others) / num_others
-                elif self.random_mixture:
+                else:
                     num_others = random.randint(1, 10)
                     selected_indices = random.sample(range(len(self.audio_files)), num_others)
                     other_mix = sum(self.load_other_audio_randomly(index, offset, self.clip_duration, self.sr, True) for index in selected_indices) / num_others
-                else:
-                    other_mix = np.zeros_like(target_mix)
                 
-                if not contains_audio_signal(target_mix) or not (contains_audio_signal(other_mix) or self.no_mixture):
+                if not contains_audio_signal(target_mix) or not contains_audio_signal(other_mix):
                     # logger.warning(f"Skipping {song_dict} due to empty or invalid audio.")
                     continue
 
