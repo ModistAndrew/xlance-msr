@@ -1,5 +1,6 @@
 import argparse
 from collections import OrderedDict
+import copy
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List
@@ -21,6 +22,20 @@ from modules.discriminator.MultiPeriodDiscriminator import MultiPeriodDiscrimina
 from modules.discriminator.MultiScaleDiscriminator import MultiScaleDiscriminator
 from modules.discriminator.MultiFrequencyDiscriminator import MultiFrequencyDiscriminator
 from modules.discriminator.MultiResolutionDiscriminator import MultiResolutionDiscriminator
+
+def _init_generator(model_cfg):
+    if model_cfg['name'] == 'MelRNN':
+        return MelRNN.MelRNN(**model_cfg['params'])
+    elif model_cfg['name'] == 'MelRoFormer':
+        return MelRoFormer.MelRoFormer(**model_cfg['params'])
+    elif model_cfg['name'] == 'MelUNet':
+        return UNet.MelUNet(**model_cfg['params'])
+    elif model_cfg['name'] == 'UFormer':
+        return UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
+    elif model_cfg['name'] == 'BSRoFormer':
+        return BSRoformer.BSRoformer(**model_cfg['params'])
+    else:
+        raise ValueError(f"Unknown model name: {model_cfg['name']}")
 
 class CombinedDiscriminator(nn.Module):
     """A wrapper to combine multiple discriminators into a single module."""    
@@ -97,10 +112,17 @@ class MusicRestorationModule(pl.LightningModule):
         self.model_output_loss = self.hparams.model['name'] == 'BSRoFormer'
 
         # 1. Generator
-        self.generator = self._init_generator()
+        self.generator = _init_generator(self.hparams.model)
         self.dummy = False
         if hasattr(self.hparams, 'checkpoint'):
             self.load_generator_state_dict()
+        if hasattr(self.hparams, 'model1'):
+            generator1 = copy.deepcopy(self.generator)
+            for param in self.generator.parameters():
+                param.requires_grad = False
+            for param in generator1.parameters():
+                param.requires_grad = True
+            self.generator = nn.Sequential(self.generator, generator1)
 
         # 2. Discriminator
         if hasattr(self.hparams, 'discriminators'):
@@ -172,21 +194,6 @@ class MusicRestorationModule(pl.LightningModule):
                 print(f"Frozen {frozen_count} parameters from checkpoint")
         else:
             raise ValueError(f"Unknown checkpoint type: {type}")
-        
-    def _init_generator(self):
-        model_cfg = self.hparams.model
-        if model_cfg['name'] == 'MelRNN':
-            return MelRNN.MelRNN(**model_cfg['params'])
-        elif model_cfg['name'] == 'MelRoFormer':
-            return MelRoFormer.MelRoFormer(**model_cfg['params'])
-        elif model_cfg['name'] == 'MelUNet':
-            return UNet.MelUNet(**model_cfg['params'])
-        elif model_cfg['name'] == 'UFormer':
-            return UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
-        elif model_cfg['name'] == 'BSRoFormer':
-            return BSRoformer.BSRoformer(**model_cfg['params'])
-        else:
-            raise ValueError(f"Unknown model name: {model_cfg['name']}")
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
         if self.dummy:

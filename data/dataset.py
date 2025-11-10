@@ -78,6 +78,7 @@ class RawStems(Dataset):
         clip_duration: float = 3.0,
         snr_range: Tuple[float, float] = (0.0, 10.0),
         apply_augmentation: bool = True,
+        also_apply_mixture_augmentation: bool = True,
         rms_threshold: float = -40.0,
         no_mixture: bool = False,
         no_mixture_all: bool = False,
@@ -89,6 +90,7 @@ class RawStems(Dataset):
         self.clip_duration = clip_duration
         self.snr_range = snr_range
         self.apply_augmentation = apply_augmentation
+        self.apply_mixture_augmentation = apply_augmentation and also_apply_mixture_augmentation
         self.rms_threshold = rms_threshold
         self.no_mixture = no_mixture
         self.no_mixture_all = no_mixture_all
@@ -304,6 +306,8 @@ class RawStems(Dataset):
                     "mixture": np.nan_to_num(target_augmented),
                     "target": np.nan_to_num(target_clean)
                 }
+            num_targets = random.randint(1, min(len(song_dict["target_stems"]), 5))
+            selected_targets = random.sample(song_dict["target_stems"], num_targets)
             if not self.random_mixture:
                 num_others = random.randint(1, min(len(song_dict["others"]), 10))
                 selected_others = random.sample(song_dict["others"], num_others)
@@ -335,7 +339,7 @@ class RawStems(Dataset):
                 )
                 target_clean *= target_scale
                 
-                mixture_augmented = self.mixture_augmentation.apply(mixture, self.sr) if self.apply_augmentation else mixture
+                mixture_augmented = self.mixture_augmentation.apply(mixture, self.sr) if self.apply_mixture_augmentation else mixture
 
                 max_val = np.max(np.abs(mixture_augmented)) + 1e-8
                 mixture_final = mixture_augmented / max_val
