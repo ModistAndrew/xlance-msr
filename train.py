@@ -36,6 +36,15 @@ def _init_generator(model_cfg):
         return BSRoformer.BSRoformer(**model_cfg['params'])
     else:
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
+    
+class RoformerSequential(nn.Sequential):
+    def __init__(self, *args):
+        super().__init__(*args)
+    
+    def forward(self, mixture, target=None):
+        for module in self[:-1]:
+            mixture = module(mixture) # only pass mixture
+        return self[-1](mixture, target) # also pass target if present
 
 class CombinedDiscriminator(nn.Module):
     """A wrapper to combine multiple discriminators into a single module."""    
@@ -122,7 +131,7 @@ class MusicRestorationModule(pl.LightningModule):
                 param.requires_grad = False
             for param in generator1.parameters():
                 param.requires_grad = True
-            self.generator = nn.Sequential(self.generator, generator1)
+            self.generator = RoformerSequential(self.generator, generator1)
 
         # 2. Discriminator
         if hasattr(self.hparams, 'discriminators'):
