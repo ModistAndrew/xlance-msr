@@ -1,5 +1,5 @@
 project_name: "bsrestore"
-exp_name: "vox_stem_gan"
+exp_name: "vox_stem_all_gan"
 
 model:
   name: "BSRoFormer"
@@ -115,14 +115,14 @@ data:
     apply_augmentation: True
     also_apply_mixture_augmentation: False
     snr_range: [0.0, 10.0]
-    no_mixture: True
+    no_mixture_all: True
   val_dataset:
     target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
     apply_augmentation: True
     also_apply_mixture_augmentation: False
     snr_range: [0.0, 10.0]
-    no_mixture: True
+    no_mixture_all: True
   dataloader_params:
     batch_size: 4
     num_workers: 8

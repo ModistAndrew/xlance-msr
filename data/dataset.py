@@ -82,6 +82,7 @@ class RawStems(Dataset):
         rms_threshold: float = -40.0,
         no_mixture: bool = False,
         no_mixture_all: bool = False,
+        output_mixture: bool = False,
         moisesdb: bool = False,
         random_mixture: bool = False,
     ) -> None:
@@ -94,6 +95,7 @@ class RawStems(Dataset):
         self.rms_threshold = rms_threshold
         self.no_mixture = no_mixture
         self.no_mixture_all = no_mixture_all
+        self.output_mixture = output_mixture
         self.random_mixture = random_mixture
         
         if moisesdb:
@@ -136,7 +138,8 @@ class RawStems(Dataset):
         logger.info(f"{len(self.audio_files)} audio files after filtering.")
         
         self.stem_augmentation = StemAugmentation()
-        self.mixture_augmentation = MixtureAugmentation()
+        if self.apply_mixture_augmentation:
+            self.mixture_augmentation = MixtureAugmentation()
         
     def load_audio(self, file_path: Path, offset: float, duration: float, sr: int, aug: bool) -> np.ndarray:
         audio, _ = librosa.load(file_path, sr=sr, offset=offset, duration=duration, mono=False)
@@ -331,19 +334,24 @@ class RawStems(Dataset):
                     # logger.warning(f"Skipping {song_dict} due to empty or invalid audio.")
                     continue
 
-                target_clean = target_mix.copy()
+                if not self.output_mixture:
+                    target_clean = target_mix.copy()
                 target_augmented = self.stem_augmentation.apply(target_mix, self.sr) if self.apply_augmentation else target_mix
                 
                 mixture, target_scale, _ = mix_to_target_snr(
                     target_augmented, other_mix, random.uniform(*self.snr_range)
                 )
-                target_clean *= target_scale
+                if not self.output_mixture:
+                    target_clean *= target_scale
+                
+                if self.output_mixture:
+                    mixture_clean = mixture.copy()
                 
                 mixture_augmented = self.mixture_augmentation.apply(mixture, self.sr) if self.apply_mixture_augmentation else mixture
 
                 max_val = np.max(np.abs(mixture_augmented)) + 1e-8
                 mixture_final = mixture_augmented / max_val
-                target_final = target_clean / max_val
+                target_final = (mixture_clean if self.output_mixture else target_clean) / max_val
                 
                 rescale = np.random.uniform(*DEFAULT_GAIN_RANGE)
 
@@ -351,11 +359,11 @@ class RawStems(Dataset):
                 target = np.nan_to_num(target_final * rescale)
                 
                 target_length = int(self.clip_duration * self.sr)
-                if target.shape[1] != target_length:
+                if target.shape[1] < target_length:
                     target = np.pad(target, (0, target_length - target.shape[1]), mode='constant')
                 else:
                     target = target[:, :target_length]
-                if mixture.shape[1] != target_length:
+                if mixture.shape[1] < target_length:
                     mixture = np.pad(mixture, (0, target_length - mixture.shape[1]), mode='constant')
                 else:
                     mixture = mixture[:, :target_length]
