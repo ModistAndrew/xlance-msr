@@ -23,7 +23,7 @@ from modules.discriminator.MultiScaleDiscriminator import MultiScaleDiscriminato
 from modules.discriminator.MultiFrequencyDiscriminator import MultiFrequencyDiscriminator
 from modules.discriminator.MultiResolutionDiscriminator import MultiResolutionDiscriminator
 
-def _init_generator(model_cfg):
+def init_generator(model_cfg):
     if model_cfg['name'] == 'MelRNN':
         return MelRNN.MelRNN(**model_cfg['params'])
     elif model_cfg['name'] == 'MelRoFormer':
@@ -121,7 +121,7 @@ class MusicRestorationModule(pl.LightningModule):
         self.model_output_loss = self.hparams.model['name'] == 'BSRoFormer'
 
         # 1. Generator
-        self.generator = _init_generator(self.hparams.model)
+        self.generator = init_generator(self.hparams.model)
         self.dummy = False
         if hasattr(self.hparams, 'checkpoint'):
             self.load_generator_state_dict()

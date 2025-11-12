@@ -1,5 +1,5 @@
 project_name: "bsrestore"
-exp_name: "vox_combined"
+exp_name: "vox_combined_v1"
 
 model:
   name: "BSRoFormer"
@@ -138,4 +138,4 @@ trainer:
 
 checkpoint:
   path: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/jinxuanzhu/MSRKit/checkpoints/BS-Rofo-SW-Fixed.ckpt"
-  type: "roformer"
+  type: "roformer_vox"

@@ -1,5 +1,6 @@
 import argparse
 from collections import OrderedDict
+import copy
 import yaml
 from pathlib import Path
 from typing import Dict, Any
@@ -12,6 +13,8 @@ from tqdm import tqdm
 
 from models import MelRNN, MelRoFormer, UFormer, UNet
 from models.bs_roformer import bs_roformer as BSRoformer
+
+from train import init_generator, RoformerSequential
 
 
 def load_ckpt_or_pth(path: str, map_location: str) -> Any:
@@ -32,21 +35,11 @@ def load_ckpt_or_pth(path: str, map_location: str) -> Any:
 
 def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = 'cuda') -> nn.Module:
     """Initialize and load the generator model from unwrapped checkpoint."""
-    model_cfg = config['model']
+    generator = init_generator(config['model'])
     
-    # Initialize generator based on config
-    if model_cfg['name'] == 'MelRNN':
-        generator = MelRNN.MelRNN(**model_cfg['params'])
-    elif model_cfg['name'] == 'MelRoFormer':
-        generator = MelRoFormer.MelRoFormer(**model_cfg['params'])
-    elif model_cfg['name'] == 'MelUNet':
-        generator = UNet.MelUNet(**model_cfg['params'])
-    elif model_cfg['name'] == 'UFormer':
-        generator = UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
-    elif model_cfg['name'] == 'BSRoFormer':
-        generator = BSRoformer.BSRoformer(**model_cfg['params'])
-    else:
-        raise ValueError(f"Unknown model name: {model_cfg['name']}")
+    if 'model1' in config:
+        generator1 = copy.deepcopy(generator)
+        generator = RoformerSequential(generator, generator1)
     
     # Load unwrapped generator weights
     state_dict = load_ckpt_or_pth(checkpoint_path, device)
@@ -58,9 +51,9 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
     return generator
 
 
-def process_audio(audio: np.ndarray, generator: nn.Module, device: str = 'cuda') -> np.ndarray:
-    use_channel = isinstance(generator, UFormer.UFormer) or isinstance(generator, BSRoformer.BSRoformer)
-    use_16_mix = isinstance(generator, BSRoformer.BSRoformer)
+def process_audio(config, audio: np.ndarray, generator: nn.Module, device: str = 'cuda') -> np.ndarray:
+    use_channel = config['model']['name'] in ['BSRoFormer', 'UFormer']
+    use_16_mix = config['model']['name'] == 'BSRoFormer'
     """Process a single audio array through the generator."""
     # Convert to tensor: (channels, samples) -> (1, channels, samples)
     if audio.ndim == 1:
@@ -130,7 +123,7 @@ def main():
             audio = audio.T  # Convert to (channels, samples)
         
         # Process through generator
-        output_audio = process_audio(audio, generator, device=args.device)
+        output_audio = process_audio(config, audio, generator, device=args.device)
         
         # Transpose back for saving: (channels, samples) -> (samples, channels)
         if output_audio.ndim == 2:
