@@ -75,7 +75,7 @@ def apply_random_room_reverb(audio, sr):
     room_dim = np.random.uniform(3, 9, size=3)
 
     # 随机选择麦克风&声源位置
-    room = pra.ShoeBox(room_dim, fs=sr, max_order=10, absorption=np.random.uniform(0.2, 0.7))
+    room = pra.ShoeBox(room_dim, fs=sr, max_order=np.random.randint(4, 7), absorption=np.random.uniform(0.2, 0.7))
 
     mic_loc = np.array([
     np.random.uniform(0.5, room_dim[0]-0.5),
@@ -92,14 +92,22 @@ def apply_random_room_reverb(audio, sr):
     room.add_source(source_loc, signal=audio.mean(axis=0))  # 用 mean 保持左右一致的空间信息
 
     room.compute_rir()
-
-    # 将 RIR 应用到每个通道（同步增强，不破坏立体场）
-    out = np.vstack([
+    
+    WET_LEVEL = np.random.uniform(0.1, 0.6)
+    DRY_LEVEL = np.random.uniform(0.5, 1.0)
+    wet_audio = np.vstack([
         np.convolve(audio[ch], room.rir[0][0], mode="full")[:L]
         for ch in range(C)
     ])
+    wet_norm = np.max(np.abs(wet_audio)) + 1e-8
 
-    return out
+    # 最终输出 = 干声 * Dry 比例 + 归一化湿声 * Wet 比例
+    out = (audio * DRY_LEVEL) + (wet_audio * (WET_LEVEL / wet_norm))
+    max_out = np.max(np.abs(out)) + 1e-8
+    out_normalized = out / max_out
+    
+    return out_normalized
+
 class MasteringEnhancer:
     def __init__(self):
         pass
@@ -202,9 +210,7 @@ class MixtureAugmentation:
     def __init__(self):
         LOCAL_ENCODEC_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRKit-main/data/encodec_48khz-7e698e3e.th"
         try:
-            self.encodec_model = EncodecModel()
-            checkpoint = torch.load(LOCAL_ENCODEC_PATH)
-            self.encodec_model.load_state_dict(checkpoint)
+            self.encodec_model = EncodecModel.encodec_model_48khz()
             self.encodec_model.eval()
             self.encodec_available = True
         except Exception:
@@ -216,10 +222,10 @@ class MixtureAugmentation:
         self.p_encodec = 0.2
         self.p_mp3 = 0.3
         self.p_fm = 0.2
-        self.p_room = 1
+        self.p_room = 0.3
         
         self.mastering = MasteringEnhancer()
-        self.p_mastering = 0.1
+        self.p_mastering = 0.3
     
     def apply(self, audio: np.ndarray, sample_rate: int = 44100) -> np.ndarray:
         if np.max(np.abs(audio)) == 0:
