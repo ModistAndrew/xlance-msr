@@ -1,5 +1,5 @@
 project_name: "bsrestore"
-exp_name: "vox_mix_large"
+exp_name: "vox_hard_large"
 
 model:
   name: "BSRoFormer"
@@ -106,20 +106,17 @@ data:
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
     apply_augmentation: True
     snr_range: [0.0, 10.0]
-    output_mixture: True
   train_dataset1:
     target_stem: "vox"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
     apply_augmentation: True
     snr_range: [0.0, 10.0]
-    output_mixture: True
     moisesdb: True
   val_dataset:
     target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
     apply_augmentation: True
     snr_range: [0.0, 10.0]
-    output_mixture: True
   dataloader_params:
     batch_size: 4
     num_workers: 8
