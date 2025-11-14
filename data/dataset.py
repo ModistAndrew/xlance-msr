@@ -142,10 +142,16 @@ class RawStems(Dataset):
             self.mixture_augmentation = MixtureAugmentation()
         
     def load_audio(self, file_path: Path, offset: float, duration: float, sr: int, aug: bool) -> np.ndarray:
+        expected_samples = int(sr * duration)
         audio, _ = librosa.load(file_path, sr=sr, offset=offset, duration=duration, mono=False)
         if len(audio.shape) == 1: audio = audio.reshape(1, -1)
-        if audio.shape[1] == 0: return np.zeros((2, int(sr * duration)))
+        if audio.shape[1] == 0: return np.zeros((2, expected_samples))
         if audio.shape[0] == 1: audio = np.vstack([audio, audio])
+        if audio.shape[1] > expected_samples:
+            audio = audio[:, :expected_samples]
+        elif audio.shape[1] < expected_samples:
+            padding = expected_samples - audio.shape[1]
+            audio = np.pad(audio, ((0, 0), (0, padding)), mode='constant')
         if aug and self.apply_augmentation:
             audio = self.stem_augmentation.apply(audio, self.sr)
         return audio
@@ -359,18 +365,18 @@ class RawStems(Dataset):
                 target = np.nan_to_num(target_final * rescale)
                 
                 target_length = int(self.clip_duration * self.sr)
-                if target.shape[1] < target_length:
+                if target.shape[1] != target_length:
                     target = np.pad(target, (0, target_length - target.shape[1]), mode='constant')
                 else:
                     target = target[:, :target_length]
-                if mixture.shape[1] < target_length:
+                if mixture.shape[1] != target_length:
                     mixture = np.pad(mixture, (0, target_length - mixture.shape[1]), mode='constant')
                 else:
                     mixture = mixture[:, :target_length]
                 
                 return {
-                    "mixture": np.nan_to_num(mixture),
-                    "target": np.nan_to_num(target)
+                    "mixture": np.nan_to_num(mixture).astype(np.float32),
+                    "target": np.nan_to_num(target).astype(np.float32)
                 }
 
         # logger.warning(f"No valid audio found for {song_dict}. Skipping.")
