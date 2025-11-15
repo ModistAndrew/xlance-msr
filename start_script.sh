@@ -11,9 +11,14 @@ python inference.py \
 
 # eval
 python eval_plus.py \
---target_dir /inspire/hdd/global_user/chenxie-25019/HaoQiu/MSRBench/Vocals/target/ \
---output_dir output/melrnn/90k \
---output_file output/melrnn/90k.txt
+--target_dir /inspire/hdd/global_user/chenxie-25019/HaoQiu/DATASET/MSRBench/Vocals/target \
+--output_dir output/melrnn/vox/90k \
+--output_file output/melrnn/vox/90k.txt \
+--calc_sisnr \
+--calc_pesq \
+--calc_aesthetics \
+--calc_fad_clap \
+--calc_mel_snr 
 
 # Visualization
 streamlit run audio_visualizer.py
