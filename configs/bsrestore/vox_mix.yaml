@@ -122,7 +122,7 @@ data:
     output_mixture: True
   dataloader_params:
     batch_size: 4
-    num_workers: 8
+    num_workers: 32
 
 optimizer_g:
   lr: 0.0005
