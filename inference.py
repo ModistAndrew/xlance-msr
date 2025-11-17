@@ -1,9 +1,8 @@
 import argparse
 from collections import OrderedDict
 import copy
-import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 import torch
 import torch.nn as nn
@@ -11,15 +10,22 @@ import soundfile as sf
 import numpy as np
 from tqdm import tqdm
 
-from models import MelRNN, MelRoFormer, UFormer, UNet
-from models.bs_roformer import bs_roformer as BSRoformer
-
 from train import init_generator, RoformerSequential
 
+RAWSTEMS_TO_MSRBENCH = {
+    'Voc': 'vox',
+    'Gtr': 'gtr',
+    'Kbs': 'key',
+    'Synth': 'syn',
+    'Bass': 'bass',
+    'Rhy_DK': 'drums',
+    'Rhy_PERC': 'perc',
+    'Orch': 'orch',
+}
 
-def load_ckpt_or_pth(path: str, map_location: str) -> Any:
+def load_config_and_state_dict(path: str, map_location: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if path.endswith('.pth'):
-        return torch.load(path, map_location=map_location)
+        raise ValueError("Use .ckpt files instead of .pth files")
     print(f"Extracting state dict from {path}")
     full_checkpoint = torch.load(path, map_location=map_location, weights_only=False)
     full_state_dict = full_checkpoint['state_dict']
@@ -30,10 +36,10 @@ def load_ckpt_or_pth(path: str, map_location: str) -> Any:
         if key.startswith(prefix):
             new_key = key[prefix_len:]
             generator_state_dict[new_key] = value
-    return generator_state_dict
+    return full_checkpoint['hyper_parameters'], generator_state_dict
             
 
-def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = 'cuda') -> nn.Module:
+def load_generator(config: Dict[str, Any], state_dict: Dict[str, Any], device: str = 'cuda') -> nn.Module:
     """Initialize and load the generator model from unwrapped checkpoint."""
     generator = init_generator(config['model'])
     
@@ -42,7 +48,6 @@ def load_generator(config: Dict[str, Any], checkpoint_path: str, device: str = '
         generator = RoformerSequential(generator, generator1)
     
     # Load unwrapped generator weights
-    state_dict = load_ckpt_or_pth(checkpoint_path, device)
     generator.load_state_dict(state_dict)
     
     generator = generator.to(device)
@@ -83,23 +88,35 @@ def process_audio(config, audio: np.ndarray, generator: nn.Module, device: str =
 
 def main():
     parser = argparse.ArgumentParser(description="Run inference on audio files using trained generator")
-    parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
-    parser.add_argument("--checkpoint", type=str, required=True, help="Path to unwrapped generator weights (.pth)")
-    parser.add_argument("--input_dir", type=str, required=True, help="Directory containing input .flac files")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save processed audio")
+    parser.add_argument("--checkpoint", '-c', type=str, required=True, help="Path to unwrapped generator weights (.ckpt)")
+    parser.add_argument("--checkpoint_pre", '-p', type=str, help="pre-processing model checkpoint (.ckpt)")
+    parser.add_argument("--checkpoint_post", '-P', type=str, help="post-processing model checkpoint (.ckpt)")
+    parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input .flac files")
+    parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
     args = parser.parse_args()
     
-    # Load config
-    with open(args.config, 'r') as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    config, state_dict = load_config_and_state_dict(args.checkpoint, args.device)
+    
+    project_name = config['project_name']
+    exp_name = config['exp_name']
+    step = Path(args.checkpoint).stem
+    instrument = RAWSTEMS_TO_MSRBENCH[config['data']['val_dataset']['target_stem']].capitalize()
+    print(f"Project: {project_name}, Exp: {exp_name}, Step: {step}, Instrument: {instrument}")
+    
+    if not args.input_dir:
+        args.input_dir = f"../../data/MSRBench/{instrument}/mixture/"
+        print(f"No input directory specified, using default: {args.input_dir}")
+    if not args.output_dir:
+        args.output_dir = f"output/{project_name}/{exp_name}_{step}/"
+        print(f"No output directory specified, using default: {args.output_dir}")
     
     # Setup paths
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=False)
     
-    # Get all .flac files
+    # Get all audio files
     audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav"))
     
     if len(audio_files) == 0:
@@ -108,30 +125,47 @@ def main():
     
     print(f"Found {len(audio_files)} audio files")
     
+    generators = []
+    
+    if args.checkpoint_pre:
+        print(f"Loading pre-processing model from {args.checkpoint_pre}...")
+        config_pre, state_dict_pre = load_config_and_state_dict(args.checkpoint_pre, args.device)
+        generator_pre = load_generator(config_pre, state_dict_pre, device=args.device)
+        generators.append((generator_pre, "_pre"))
+    
     # Load model
     print(f"Loading generator from {args.checkpoint}...")
-    generator = load_generator(config, args.checkpoint, device=args.device)
-    print("Model loaded successfully")
+    generator = load_generator(config, state_dict, device=args.device)
+    generators.append((generator, "_sep" if args.checkpoint_post else ""))
+    
+    if args.checkpoint_post:
+        print(f"Loading post-processing model from {args.checkpoint_post}...")
+        config_post, state_dict_post = load_config_and_state_dict(args.checkpoint_post, args.device)
+        generator_post = load_generator(config_post, state_dict_post, device=args.device)
+        generators.append((generator_post, ""))
     
     # Process each file
     for audio_file in tqdm(audio_files, desc="Processing audio files"):
-        # Load audio
-        audio, sr = sf.read(audio_file)
-        
-        # Transpose if needed: soundfile loads as (samples, channels)
-        if audio.ndim == 2:
-            audio = audio.T  # Convert to (channels, samples)
-        
-        # Process through generator
-        output_audio = process_audio(config, audio, generator, device=args.device)
-        
-        # Transpose back for saving: (channels, samples) -> (samples, channels)
-        if output_audio.ndim == 2:
-            output_audio = output_audio.T
-        
-        # Save with same filename
-        output_path = output_dir / audio_file.name
-        sf.write(output_path, output_audio, sr)
+        input_path = audio_file
+        for generator, postfix in generators:
+            # Load audio
+            audio, sr = sf.read(input_path)
+            
+            # Transpose if needed: soundfile loads as (samples, channels)
+            if audio.ndim == 2:
+                audio = audio.T  # Convert to (channels, samples)
+            
+            # Process through generator
+            output_audio = process_audio(config, audio, generator, device=args.device)
+            
+            # Transpose back for saving: (channels, samples) -> (samples, channels)
+            if output_audio.ndim == 2:
+                output_audio = output_audio.T
+            
+            # Save with same filename
+            output_path = output_dir / ((audio_file.stem + postfix) + audio_file.suffix)
+            sf.write(output_path, output_audio, sr)
+            input_path = output_path
     
     print(f"\nProcessing complete! Output saved to {output_dir}")
 
