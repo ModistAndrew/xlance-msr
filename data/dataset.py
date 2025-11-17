@@ -79,6 +79,7 @@ class RawStems(Dataset):
         snr_range: Tuple[float, float] = (0.0, 10.0),
         apply_augmentation: bool = True,
         also_apply_mixture_augmentation: bool = True,
+        also_apply_stem_augmentation: bool = True,
         rms_threshold: float = -40.0,
         no_mixture: bool = False,
         no_mixture_all: bool = False,
@@ -91,6 +92,7 @@ class RawStems(Dataset):
         self.clip_duration = clip_duration
         self.snr_range = snr_range
         self.apply_augmentation = apply_augmentation
+        self.apply_stem_augmentation = apply_augmentation and also_apply_stem_augmentation
         self.apply_mixture_augmentation = apply_augmentation and also_apply_mixture_augmentation
         self.rms_threshold = rms_threshold
         self.no_mixture = no_mixture
@@ -152,7 +154,7 @@ class RawStems(Dataset):
         elif audio.shape[1] < expected_samples:
             padding = expected_samples - audio.shape[1]
             audio = np.pad(audio, ((0, 0), (0, padding)), mode='constant')
-        if aug and self.apply_augmentation:
+        if aug and self.apply_stem_augmentation:
             audio = self.stem_augmentation.apply(audio, self.sr)
         return audio
 
@@ -293,7 +295,7 @@ class RawStems(Dataset):
                 if not contains_audio_signal(target):
                     continue
                 target_clean = target.copy()
-                target_augmented = self.stem_augmentation.apply(target, self.sr) if self.apply_augmentation else target
+                target_augmented = self.stem_augmentation.apply(target, self.sr) if self.apply_stem_augmentation else target
                 return {
                     "mixture": np.nan_to_num(target_augmented),
                     "target": np.nan_to_num(target_clean)
@@ -310,7 +312,7 @@ class RawStems(Dataset):
                 if not contains_audio_signal(target):
                     continue
                 target_clean = target.copy()
-                target_augmented = self.stem_augmentation.apply(target, self.sr) if self.apply_augmentation else target
+                target_augmented = self.stem_augmentation.apply(target, self.sr) if self.apply_stem_augmentation else target
                 return {
                     "mixture": np.nan_to_num(target_augmented),
                     "target": np.nan_to_num(target_clean)
@@ -342,7 +344,7 @@ class RawStems(Dataset):
 
                 if not self.output_mixture:
                     target_clean = target_mix.copy()
-                target_augmented = self.stem_augmentation.apply(target_mix, self.sr) if self.apply_augmentation else target_mix
+                target_augmented = self.stem_augmentation.apply(target_mix, self.sr) if self.apply_stem_augmentation else target_mix
                 
                 mixture, target_scale, _ = mix_to_target_snr(
                     target_augmented, other_mix, random.uniform(*self.snr_range)

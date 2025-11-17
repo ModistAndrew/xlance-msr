@@ -217,12 +217,12 @@ class MixtureAugmentation:
         self.encodec_model.eval()
         self.encodec_available = True
         self.encodec_bandwidths = [3.0, 6.0, 12.0, 24.0]
-        self.p_resample = 0.5
-        self.p_mastering = 0.5
-        self.p_mp3 = 0.5
-        self.p_fm = 0.5
-        self.p_live = 0.5
-        self.p_encodec = 0.5
+        self.p_resample = 0
+        self.p_mastering = 0
+        self.p_mp3 = 0
+        self.p_fm = 0
+        self.p_live = 0
+        self.p_encodec = 1.0
         self.is_cuda_initialized = False
         self.mastering = MasteringEnhancer()
 
