@@ -1,5 +1,5 @@
-project_name: "bsmoise"
-exp_name: "gtr_mix"
+project_name: "sw"
+exp_name: "key"
 
 model:
   name: "BSRoFormer"
@@ -99,44 +99,38 @@ model:
     skip_connection: False # Enable skip connection between transformer blocks - can solve problem with gradients and probably faster training
 
 data:
-  sample_rate: 48000
-  clip_duration: 3.0
+  sample_rate: 44100
+  clip_duration: 1.0
   train_dataset:
-    target_stem: "gtr"
-    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
-    apply_augmentation: False
-    snr_range: [0.0, 10.0]
-    moisesdb: True
-  train_dataset1:
-    target_stem: "Gtr"
+    target_stem: "Kbs"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
   val_dataset:
-    target_stem: "Gtr"
+    target_stem: "Kbs"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
   dataloader_params:
-    batch_size: 4
-    num_workers: 8
+    batch_size: 1
+    num_workers: 16
 
 optimizer_g:
-  lr: 0.0005
+  lr: 0.00002
   betas: [0.8, 0.99]
 
 scheduler:
   warm_up_steps: 10000
 
 trainer:
-  max_steps: 1000000
-  log_every_n_steps: 100
-  checkpoint_save_interval: 10000
-  limit_train_batches: 2000
+  max_steps: 10
+  log_every_n_steps: 10
+  checkpoint_save_interval: 10
+  limit_train_batches: 10
   devices: [0]
   precision: 16-mixed
   save_dir: logs/
 
 checkpoint:
   path: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/jinxuanzhu/MSRKit/checkpoints/BS-Rofo-SW-Fixed.ckpt"
-  type: "roformer"
+  type: "roformer_key_frozenall"

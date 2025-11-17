@@ -1,5 +1,5 @@
 project_name: "bsmoise"
-exp_name: "key_mix_large"
+exp_name: "key_mix"
 
 model:
   name: "BSRoFormer"
@@ -100,7 +100,7 @@ model:
 
 data:
   sample_rate: 48000
-  clip_duration: 10.0
+  clip_duration: 3.0
   train_dataset:
     target_stem: "key"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
@@ -119,7 +119,7 @@ data:
     snr_range: [0.0, 10.0]
   dataloader_params:
     batch_size: 4
-    num_workers: 32
+    num_workers: 8
 
 optimizer_g:
   lr: 0.0005
