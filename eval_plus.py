@@ -10,7 +10,7 @@ from scipy.linalg import sqrtm
 from tqdm import tqdm
 import torchaudio
 import torchaudio.transforms as T
-import statistics # <-- 新增导入，用于计算平均值和标准差
+import statistics 
 from audiobox_aesthetics.infer import initialize_predictor
 import pesq
 warnings.filterwarnings("ignore")
@@ -22,7 +22,19 @@ except ImportError:
     print("Please install it to run FAD-CLAP calculations:")
     print("pip install torch transformers")
     exit(1)
-
+    
+Zimtohrli_Available = False
+try:
+    from zimtohrli import mos_from_signals
+    print("Zimtohrli library imported successfully.")
+    Zimtohrli_Available = True
+except ImportError:
+    print("Warning: 'zimtohrli' library not found. Zimtohrli calculation will be skipped.")
+    # 不需要在这里 exit(1)
+except Exception as e:
+    # 捕获其他可能的初始化错误，例如 'int' object is not callable
+    print(f"Error importing Zimtohrli components: {e}. Calculation will be skipped.")
+    
 
 
 def multi_mel_snr(reference, prediction, sr=48000):
@@ -218,6 +230,7 @@ def main():
     parser.add_argument("--calc_aesthetics", action="store_true", help="Calculate AudioBox Aesthetics MOS.")
     parser.add_argument("--calc_fad_clap", action="store_true", help="Calculate Frechet Audio Distance (FAD-CLAP).")
     parser.add_argument("--calc_mel_snr", action="store_true", help="Calculate Multi-Mel-SNR.") # <-- Multi-Mel-SNR 开关
+    parser.add_argument("--calc_zimtohrli", action="store_true", help="Calculate Zimtohrli approximate MOS.")
     
     args = parser.parse_args()
     
@@ -240,6 +253,7 @@ def main():
         print(f"Error loading AudioBox Aesthetics predictor: {e}. Aesthetics calculation will be skipped.")
         aesthetics_predictor = None
         
+        
     # 初始化文件写入
     RESULTS_FILENAME = args.output_file
     results_file = open(RESULTS_FILENAME, 'w', encoding='utf-8')
@@ -250,16 +264,13 @@ def main():
     all_target_paths = []
     all_output_paths = []
     
-    all_sisnr_values = []
-    all_pesq_values = []
-    all_mel_snr_values = []
+
     all_aesthetics_values = {axis: [] for axis in AXES_NAME}
     # ----------------------------------------------------
     # PHASE 1: 遍历文件列表，计算 SI-SNR，收集路径
     # ----------------------------------------------------
     
-    print("\n--- Calculating SI-SNR (48kHz) for each pair ---")
-    results_file.write("\n--- Pairwise SI-SNR (dB) ---\n")
+
     
     TARGET_SR = 48000 
     
@@ -279,6 +290,7 @@ def main():
             raise Exception(f"Skipping, zero-length waveform: {target_path} -> {output_path}")
         
         # --- SI-SNR part ---
+        
         sisnr_val = float('nan')
         if args.calc_sisnr:
             sisnr_val = sisnr_calculator(output_wav, target_wav).item()
@@ -302,6 +314,22 @@ def main():
             mel_snr_val = sum(mel_snrs) / len(mel_snrs) if mel_snrs else float('nan')
         results_list['mel_snr'].append(mel_snr_val)
         
+        # --- Zimtohrli part ---
+        zimtohrli_mos_val = float('nan')
+        if args.calc_zimtohrli and Zimtohrli_Available: # 检查新的可用性标志
+            try:
+                # Zimtohrli 需要单声道/多声道 numpy 数组
+                target_np = target_wav.cpu().numpy().T # Shape: [L, C]
+                output_np = output_wav.cpu().numpy().T # Shape: [L, C]
+                
+                zimtohrli_mos_val = mos_from_signals(target_np[:, 0], output_np[:, 0])
+            except Exception as e:
+                # print(f"Warning: Zimtohrli calculation failed. Error: {e}")
+                pass
+                
+        results_list['zimtohrli_mos'].append(zimtohrli_mos_val)
+        
+        
         output_str = f"{target_path}|{output_path}"
         if args.calc_sisnr:
             output_str += f"|SI-SNR:{sisnr_val:.4f}"
@@ -309,6 +337,8 @@ def main():
             output_str += f"|PESQ:{pesq_val:.4f}"
         if args.calc_mel_snr:
             output_str += f"|Mel-SNR:{mel_snr_val:.4f}"
+        if args.calc_zimtohrli: 
+            output_str += f"|Zim-MOS:{zimtohrli_mos_val:.4f}"
         print(output_str)
         
         all_target_paths.append(target_path)
@@ -318,7 +348,8 @@ def main():
     all_pairwise_values = {
         'sisnr': [], 
         'pesq': [], 
-        'mel_snr': [] 
+        'mel_snr': [] ,
+        'zimtohrli_mos': []
     }
     
     
@@ -350,45 +381,42 @@ def main():
     # PHASE 2: 批量计算 AudioBox Aesthetics 分数
     # ----------------------------------------------------
     AESTHETICS_CHUNK_SIZE = 64 
-    if args.calc_aesthetics and aesthetics_predictor and all_output_paths:
+    if args.calc_aesthetics and aesthetics_predictor is not None and all_output_paths:
         print("\n--- Calculating AudioBox Aesthetics Scores (Batch) ---")
         
         # 循环处理分块
-    for i in tqdm(range(0, len(all_output_paths), AESTHETICS_CHUNK_SIZE), desc="  Aesthetics chunks"):
-        
-        # 提取当前批次的路径
-        chunk_paths = all_output_paths[i:i + AESTHETICS_CHUNK_SIZE]
-        aesthetics_input_list = [{"path": p} for p in chunk_paths]
-        
-        try:
-            # 批量执行推理 (Chunked Inference)
-            aesthetics_results = aesthetics_predictor.forward(aesthetics_input_list)
+        for i in tqdm(range(0, len(all_output_paths), AESTHETICS_CHUNK_SIZE), desc="  Aesthetics chunks"):
+            # 提取当前批次的路径
+            chunk_paths = all_output_paths[i:i + AESTHETICS_CHUNK_SIZE]
+            aesthetics_input_list = [{"path": p} for p in chunk_paths]
             
-            # 结果匹配与收集 (与上一个回答的修正逻辑一致)
-            num_outputs = len(chunk_paths)
-            num_results = len(aesthetics_results)
+            try:
+                # 批量执行推理 (Chunked Inference)
+                aesthetics_results = aesthetics_predictor.forward(aesthetics_input_list)
+                
+                # 结果匹配与收集 (与上一个回答的修正逻辑一致)
+                num_outputs = len(chunk_paths)
+                num_results = len(aesthetics_results)
 
-            for j in range(num_outputs):
-                if j < num_results and all(axis in aesthetics_results[j] for axis in AXES_NAME):
-                    score_dict = aesthetics_results[j]
-                    for axis in AXES_NAME:
-                        all_aesthetics_values[axis].append(score_dict[axis])
-                else:
-                    for axis in AXES_NAME:
-                        all_aesthetics_values[axis].append(float('nan'))
-                            
-        except Exception as e:
-            # 仍然捕获 OOM 或其他异常
-            print(f"\nError in chunk {i//AESTHETICS_CHUNK_SIZE}: {e}. Skipping chunk.")
-            
-            # 填充当前整个 chunk 为 NaN
-            for axis in AXES_NAME:
-                all_aesthetics_values[axis].extend([float('nan')] * len(chunk_paths))
-            
-            # 如果是 OOM 错误，可能需要提前停止，或者尝试更小的 AESTHETICS_CHUNK_SIZE
-            if "CUDA out of memory" in str(e):
-                print("FATAL OOM: Please reduce AESTHETICS_CHUNK_SIZE and restart.")
-                # 这里可以考虑 break 或 sys.exit() 
+                for j in range(num_outputs):
+                    if j < num_results and all(axis in aesthetics_results[j] for axis in AXES_NAME):
+                        score_dict = aesthetics_results[j]
+                        for axis in AXES_NAME:
+                            all_aesthetics_values[axis].append(score_dict[axis])
+                    else:
+                        for axis in AXES_NAME:
+                            all_aesthetics_values[axis].append(float('nan'))
+                                        
+            except Exception as e:
+                # 仍然捕获 OOM 或其他异常
+                print(f"\nError in chunk {i//AESTHETICS_CHUNK_SIZE}: {e}. Skipping chunk.")
+                
+                # 填充当前整个 chunk 为 NaN
+                for axis in AXES_NAME:
+                    all_aesthetics_values[axis].extend([float('nan')] * len(chunk_paths))
+                
+                if "CUDA out of memory" in str(e):
+                    print("FATAL OOM: Please reduce AESTHETICS_CHUNK_SIZE and restart.")
     
     # 补全 Aesthetics 列表（如果未计算），确保长度与 num_pairs 匹配
     if not args.calc_aesthetics or not all_output_paths:
@@ -397,9 +425,59 @@ def main():
                 # 只在列表长度不一致时进行填充（避免重复填充）
                 if len(all_aesthetics_values[axis]) < len(all_target_paths):
                     all_aesthetics_values[axis].extend([float('nan')] * (len(all_target_paths) - len(all_aesthetics_values[axis])))
-
     # ----------------------------------------------------
-    # PHASE 3: 写入逐行结果 (SI-SNR 和 Aesthetics)
+    # 新增: PHASE 2.5: 按多样性索引 (y) 分组数据
+    # ----------------------------------------------------
+    grouped_results = {}
+    num_pairs = len(all_target_paths)
+    AXES_NAME = ["CE", "CU", "PC", "PQ"]
+    for i in range(num_pairs):
+        output_filename = os.path.basename(all_output_paths[i])
+        # 尝试从文件名 'x_DTy.flac' 中提取 y
+        try:
+            # 假设文件名格式是 {target_id}_DT{y}.flac
+            dt_part = output_filename.split('_DT')[-1]
+            y_index = int(os.path.splitext(dt_part)[0])
+        except Exception:
+            # 如果格式不匹配，将其归类为特殊的 'other' 组或跳过
+            y_index = 'other' 
+            # continue # 也可以选择跳过不匹配的格式
+        
+        # 初始化该 y 组
+        if y_index not in grouped_results:
+            grouped_results[y_index] = {
+                'sisnr': [], 
+                'pesq': [], 
+                'mel_snr': [] ,
+                'zimtohrli_mos': []
+            }
+            for axis in AXES_NAME:
+                grouped_results[y_index][axis] = []
+                
+        # 收集 pairwise 指标
+        if args.calc_sisnr:
+            grouped_results[y_index]['sisnr'].append(all_pairwise_values['sisnr'][i])
+        if args.calc_pesq:
+            grouped_results[y_index]['pesq'].append(all_pairwise_values['pesq'][i])
+        if args.calc_mel_snr:
+            grouped_results[y_index]['mel_snr'].append(all_pairwise_values['mel_snr'][i])
+        if args.calc_zimtohrli:
+            grouped_results[y_index]['zimtohrli_mos'].append(all_pairwise_values['zimtohrli_mos'][i])
+            
+        # 收集 aesthetics 指标
+        if args.calc_aesthetics:
+            for axis in AXES_NAME:
+                grouped_results[y_index][axis].append(all_aesthetics_values[axis][i])
+
+    # 打印分组信息，帮助调试
+    print(f"\nResults grouped by Diversity Index (y): {list(grouped_results.keys())}")
+    for y, data in grouped_results.items():
+        if data['sisnr']:
+            print(f"Index y={y}: {len(data['sisnr'])} samples.")
+        else:
+            print(f"Index y={y}: 0 samples (no SI-SNR calculated).")
+    # ----------------------------------------------------
+    # PHASE 3: 写入逐行结果 
     # ----------------------------------------------------
     # 检查数据长度是否一致
     num_pairs = len(all_target_paths)
@@ -426,6 +504,8 @@ def main():
         header_metrics += f"|{'PESQ':<8}"
     if args.calc_mel_snr: # <-- 新增 Mel-SNR 列头
         header_metrics += f"|{'Mel-SNR (dB)':<15}"
+    if args.calc_zimtohrli: # <-- Zimtohrli 列头
+        header_metrics += f"|{'Zimtohrli (MOS)':<18}"
     
     if args.calc_aesthetics:
         for axis in AXES_NAME:
@@ -454,15 +534,22 @@ def main():
             mel_snr_item = all_pairwise_values['mel_snr'][i]
             mel_snr_str = f"{mel_snr_item:<15.4f}" if not np.isnan(mel_snr_item) else "N/A           "
             result_line += f"|{mel_snr_str}"
-        
+        if args.calc_zimtohrli:
+            mos_item = all_pairwise_values['zimtohrli_mos'][i]
+            
+            mos_str = f"{mos_item:<18.4f}" if not np.isnan(mos_item) else "N/A            "
+            
+            result_line += f"|{mos_str}"
+            
         # 构造 Aesthetics 部分
         aesthetics_part = ""
-        for axis in AXES_NAME:
-            score = all_aesthetics_values[axis][i] # 从对应的列表中取出分数
-            
-            # 格式化 Aesthetics 分数
-            aesthetics_str = f"{score:.4f}" if not np.isnan(score) else "N/A"
-            aesthetics_part += f"|{aesthetics_str:<10}"
+        if args.calc_aesthetics:
+            for axis in AXES_NAME:
+                score = all_aesthetics_values[axis][i] # 从对应的列表中取出分数
+                
+                # 格式化 Aesthetics 分数
+                aesthetics_str = f"{score:.4f}" if not np.isnan(score) else "N/A"
+                aesthetics_part += f"|{aesthetics_str:<10}"
 
         # 写入文件
         results_file.write(result_line + aesthetics_part + "\n")
@@ -471,110 +558,149 @@ def main():
     # PHASE 4: 总体统计参数计算 (SI-SNR, Aesthetics)
     # ----------------------------------------------------
 
-    results_file.write("\n\n--- Overall Statistical Metrics ---\n")
-     #  SI-SNR 统计
-    if args.calc_sisnr and all_pairwise_values['sisnr']:
-        scores = all_pairwise_values['sisnr']
-        if scores:
-            avg_sisnr = statistics.mean(scores)
-            std_sisnr = statistics.stdev(scores) if len(scores) > 1 else 0.0
-            
-            # 写入平均值和标准差
-            results_file.write(f"SI-SNR (dB) Average: {avg_sisnr:.4f}\n")
-            results_file.write(f"SI-SNR (dB) Std Dev: {std_sisnr:.4f}\n")
-        else:
-            results_file.write("No valid SI-SNR values were calculated.\n")
+    results_file.write("\n\n--- Overall Statistical Metrics (Grouped by Diversity Index 'y') ---\n")
 
-    # PESQ 统计
-    if args.calc_pesq and all_pairwise_values['pesq']:
-        scores = all_pairwise_values['pesq']
-        valid_pesq_scores = [s for s in scores if not np.isnan(s)]
-        if valid_pesq_scores:
-            avg_pesq = statistics.mean(valid_pesq_scores)
-            std_pesq = statistics.stdev(valid_pesq_scores) if len(valid_pesq_scores) > 1 else 0.0
-            results_file.write(f"\nPESQ Average: {avg_pesq:.4f}\n")
-            results_file.write(f"PESQ Std Dev: {std_pesq:.4f} (from {len(valid_pesq_scores)} samples)\n")
-        else:
-            results_file.write("\nNo valid PESQ values were calculated.\n")
-    
-    #  Multi-Mel-SNR 统计 
-    if args.calc_mel_snr and all_pairwise_values['mel_snr']:
-        scores = all_pairwise_values['mel_snr']
-        valid_scores = [s for s in scores if not np.isnan(s)]
-        if valid_scores:
-            avg_mel_snr = statistics.mean(valid_scores)
-            std_mel_snr = statistics.stdev(valid_scores) if len(valid_scores) > 1 else 0.0
-            results_file.write(f"\nMulti-Mel-SNR Average: {avg_mel_snr:.4f}\n")
-            results_file.write(f"Multi-Mel-SNR Std Dev: {std_mel_snr:.4f} (from {len(valid_scores)} samples)\n")
-        else:
-            results_file.write("\nNo valid Multi-Mel-SNR values were calculated.\n")        
-    
-    # Aesthetics 统计
-    results_file.write("\n--- Aesthetics MOS ---\n")
-    for axis in AXES_NAME:
-        scores = all_aesthetics_values[axis]
-        valid_scores = [s for s in scores if not np.isnan(s)]
+    # 获取并排序 y 索引，以便有序写入文件 (例如 y=0, y=1, y=2...)
+    sorted_y_indices = sorted([y for y in grouped_results.keys() if y != 'other'])
+    if 'other' in grouped_results:
+        sorted_y_indices.append('other') # 将 'other' 放在最后
+
+    # 遍历每个 y 组
+    for y_index in sorted_y_indices:
         
-        if valid_scores:
-            avg_aesthetics = statistics.mean(valid_scores)
-            std_aesthetics = statistics.stdev(valid_scores) if len(valid_scores) > 1 else 0.0
-            
-            # 写入结果
-            results_file.write(f"  {axis} (Avg/Std): {avg_aesthetics:.4f} / {std_aesthetics:.4f} (from {len(valid_scores)} samples)\n")
-        else:
-            results_file.write(f"  {axis} (Avg/Std): N/A (No valid scores calculated)\n")
-    
+        y_data = grouped_results[y_index]
+        results_file.write(f"\n=== Diversity Index y={y_index} (N={len(y_data.get('sisnr', [])):<4}) ===\n")
+        
+        # --- SI-SNR 统计 ---
+        if args.calc_sisnr and y_data['sisnr']:
+            scores = y_data['sisnr']
+            if scores:
+                avg_sisnr = statistics.mean(scores)
+                std_sisnr = statistics.stdev(scores) if len(scores) > 1 else 0.0
+                results_file.write(f"  SI-SNR (dB) Average: {avg_sisnr:.4f}\n")
+                results_file.write(f"  SI-SNR (dB) Std Dev: {std_sisnr:.4f}\n")
+
+        # --- PESQ 统计 ---
+        if args.calc_pesq and y_data['pesq']:
+            scores = y_data['pesq']
+            valid_pesq_scores = [s for s in scores if not np.isnan(s)]
+            if valid_pesq_scores:
+                avg_pesq = statistics.mean(valid_pesq_scores)
+                std_pesq = statistics.stdev(valid_pesq_scores) if len(valid_pesq_scores) > 1 else 0.0
+                results_file.write(f"  PESQ Average: {avg_pesq:.4f}\n")
+                results_file.write(f"  PESQ Std Dev: {std_pesq:.4f} (from {len(valid_pesq_scores)} samples)\n")
+        
+        # --- Multi-Mel-SNR 统计 ---
+        if args.calc_mel_snr and y_data['mel_snr']:
+            scores = y_data['mel_snr']
+            valid_scores = [s for s in scores if not np.isnan(s)]
+            if valid_scores:
+                avg_mel_snr = statistics.mean(valid_scores)
+                std_mel_snr = statistics.stdev(valid_scores) if len(valid_scores) > 1 else 0.0
+                results_file.write(f"  Multi-Mel-SNR Average: {avg_mel_snr:.4f}\n")
+                results_file.write(f"  Multi-Mel-SNR Std Dev: {std_mel_snr:.4f} (from {len(valid_scores)} samples)\n")
+        
+        # --- Zimtohrli 统计 ---
+        if args.calc_zimtohrli and y_data['zimtohrli_mos']:
+            mos_scores = y_data['zimtohrli_mos']
+            valid_mos_scores = [s for s in mos_scores if not np.isnan(s)]
+            if valid_mos_scores:
+                avg_mos = statistics.mean(valid_mos_scores)
+                std_mos = statistics.stdev(valid_mos_scores) if len(valid_mos_scores) > 1 else 0.0
+                results_file.write(f"  Zimtohrli MOS Average: {avg_mos:.4f}\n")
+                results_file.write(f"  Zimtohrli MOS Std Dev: {std_mos:.4f} (from {len(valid_mos_scores)} samples)\n")
+
+        # --- Aesthetics 统计 ---
+        if args.calc_aesthetics and aesthetics_predictor is not None:
+            results_file.write("  --- Aesthetics MOS ---\n")
+            for axis in AXES_NAME:
+                scores = y_data[axis]
+                valid_scores = [s for s in scores if not np.isnan(s)]
+                
+                if valid_scores:
+                    avg_aesthetics = statistics.mean(valid_scores)
+                    std_aesthetics = statistics.stdev(valid_scores) if len(valid_scores) > 1 else 0.0
+                    results_file.write(f"  {axis} (Avg/Std): {avg_aesthetics:.4f} / {std_aesthetics:.4f} (from {len(valid_scores)} samples)\n")
+                else:
+                    results_file.write(f"  {axis} (Avg/Std): N/A (No valid scores calculated)\n")
     # ----------------------------------------------------
     # --- FAD-CLAP 计算 ---
     # ----------------------------------------------------
     if args.calc_fad_clap:
-        print("\n--- Calculating FAD-CLAP (48kHz) ---")
+        results_file.write("\n\n--- FAD-CLAP Scores (Grouped by Diversity Index 'y') ---\n")
         
         if not all_target_paths:
-            results_file.write("\nFAD-CLAP: Skipped (No valid file pairs found).\n")
+            results_file.write("FAD-CLAP: Skipped (No valid file pairs found).\n")
         else:
+            # 1. 加载模型 (如果之前没成功加载)
             clap_model = None
             clap_processor = None
+            try:
+                print("\nLoading CLAP model for FAD...")
+                LOCAL_MODEL_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/EVAL_MODEL/clap-model"
+                clap_model = ClapModel.from_pretrained(LOCAL_MODEL_PATH)
+                clap_processor = ClapProcessor.from_pretrained(LOCAL_MODEL_PATH)
+                clap_model.eval()
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                print(f"CLAP model loaded. Using device: {device}")
+            except Exception as e:
+                error_msg = f"Fatal Error: Could not load CLAP model for FAD. Error: {e}"
+                print(error_msg)
+                results_file.write(f"FAD-CLAP: {error_msg}\n")
+                
+            if clap_model and clap_processor:
+                # 2. 计算所有 Target 的 Embeddings (只需要计算一次)
+                print("\nCalculating embeddings for all target files...")
+                target_embeddings = get_clap_embeddings(all_target_paths, clap_model, clap_processor, device, args.batch_size)
+                
+                if target_embeddings.size > 0:
+                    
+                    # 3. 按 y 组计算 FAD
+                    y_paths = {} # {y: [output_path_for_y_0, output_path_for_y_1, ...]}
+                    for i in range(num_pairs):
+                        output_filename = os.path.basename(all_output_paths[i])
+                        try:
+                            dt_part = output_filename.split('_DT')[-1]
+                            y_index = int(os.path.splitext(dt_part)[0])
+                        except Exception:
+                            y_index = 'other' 
+                        
+                        if y_index not in y_paths:
+                            y_paths[y_index] = []
+                        y_paths[y_index].append(all_output_paths[i])
 
-        try:
-            results_file.write(f"\nTotal pairs for FAD-CLAP: {len(all_target_paths)}\n")
-            print("Loading CLAP model...")
-            LOCAL_MODEL_PATH = "/inspire/hdd/global_user/chenxie-25019/HaoQiu/EVAL_MODEL/clap-model"  # 您下载的模型路径
-            clap_model = ClapModel.from_pretrained(LOCAL_MODEL_PATH)
-            clap_processor = ClapProcessor.from_pretrained(LOCAL_MODEL_PATH)
-            clap_model.eval()
-            print("CLAP model loaded successfully.")
-            
-        except Exception as e:
-            error_msg = f"Fatal Error: Could not load CLAP model. Error: {e}"
-            print(error_msg)
-            results_file.write(f"\nFAD-CLAP: {error_msg}\n")
-    if clap_model and clap_processor:
-            
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {device}")
+                    sorted_y_indices = sorted([y for y in y_paths.keys() if y != 'other'])
+                    if 'other' in y_paths:
+                        sorted_y_indices.append('other')
 
-        print("\nCalculating embeddings for all target files...")
-        target_embeddings = get_clap_embeddings(all_target_paths, clap_model, clap_processor, device, args.batch_size)
-
-        print("Calculating embeddings for all output files...")
-        output_embeddings = get_clap_embeddings(all_output_paths, clap_model, clap_processor, device, args.batch_size)
-
-        if target_embeddings.size > 0 and output_embeddings.size > 0:
-            print("Calculating Frechet Audio Distance (FAD)...")
-            fad_score = calculate_frechet_distance(target_embeddings, output_embeddings)
-            if fad_score is not None:
-                final_fad_output = f"\nOverall FAD-CLAP Score: {fad_score:.4f}"
-                print(final_fad_output)
-                results_file.write(final_fad_output + "\n")
-            else:
-                msg = "\nCould not calculate FAD-CLAP score."
-                print(msg)
-                results_file.write(f"\nFAD-CLAP: {msg}\n")
-        else:
-            msg = "\nCould not calculate FAD-CLAP due to issues with embedding generation."
-            print(msg)
-            results_file.write(f"\nFAD-CLAP: {msg}\n")
+                    for y_index in sorted_y_indices:
+                        current_output_paths = y_paths[y_index]
+                        print(f"\nCalculating output embeddings for y={y_index} (N={len(current_output_paths)})...")
+                        
+                        # 计算当前 y 组的 Output Embeddings
+                        output_embeddings = get_clap_embeddings(current_output_paths, clap_model, clap_processor, device, args.batch_size)
+                        
+                        if output_embeddings.size > 0:
+                            # 计算 FAD: Target_all vs. Output_y
+                            print(f"Calculating FAD-CLAP: Target_all vs. Output_y={y_index}...")
+                            fad_score = calculate_frechet_distance(target_embeddings, output_embeddings)
+                            
+                            if fad_score is not None:
+                                final_fad_output = f"FAD-CLAP (y={y_index}): {fad_score:.4f}"
+                                print(final_fad_output)
+                                results_file.write(final_fad_output + "\n")
+                            else:
+                                msg = f"Could not calculate FAD-CLAP for y={y_index}."
+                                print(msg)
+                                results_file.write(f"FAD-CLAP (y={y_index}): {msg}\n")
+                        else:
+                            msg = f"Could not calculate FAD-CLAP for y={y_index} due to issues with embedding generation."
+                            print(msg)
+                            results_file.write(f"FAD-CLAP (y={y_index}): {msg}\n")
+                else:
+                    msg = "Could not calculate FAD-CLAP (Target embeddings failed)."
+                    print(msg)
+                    results_file.write(f"FAD-CLAP: {msg}\n")
 
     # 关闭文件句柄
     results_file.write("\n--- End of Report ---")
