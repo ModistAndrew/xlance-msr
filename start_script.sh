@@ -11,14 +11,15 @@ python inference.py \
 
 # eval
 python eval_plus.py \
---target_dir /inspire/hdd/global_user/chenxie-25019/HaoQiu/DATASET/MSRBench/Vocals/target \
---output_dir output/melrnn/vox/90k \
---output_file output/melrnn/vox/90k.txt \
+--target_dir /inspire/hdd/global_user/chenxie-25019/HaoQiu/DATASET/test_datapair/target \
+--output_dir /inspire/hdd/global_user/chenxie-25019/HaoQiu/DATASET/test_datapair/output \
+--output_file /inspire/hdd/global_user/chenxie-25019/HaoQiu/DATASET/test_datapair/test.txt \
 --calc_sisnr \
 --calc_pesq \
 --calc_aesthetics \
 --calc_fad_clap \
---calc_mel_snr 
+--calc_mel_snr \
+--calc_zimtohrli
 
 # Visualization
 streamlit run audio_visualizer.py
