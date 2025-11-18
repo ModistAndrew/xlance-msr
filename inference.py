@@ -1,7 +1,10 @@
 import argparse
 from collections import OrderedDict
 import copy
+import os
 from pathlib import Path
+import subprocess
+import sys
 from typing import Dict, Any, Tuple
 
 import torch
@@ -9,6 +12,7 @@ import torch.nn as nn
 import soundfile as sf
 import numpy as np
 from tqdm import tqdm
+import librosa
 
 from train import init_generator, RoformerSequential
 
@@ -94,6 +98,8 @@ def main():
     parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input .flac files")
     parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
+    parser.add_argument("--no-eval", action="store_false", dest="eval", help="Skip evaluation after inference")
+    parser.add_argument("--target_index", type=str, help="Index of target audio files, e.g. '11|12'")
     args = parser.parse_args()
     
     config, state_dict = load_config_and_state_dict(args.checkpoint, args.device)
@@ -151,12 +157,20 @@ def main():
             # Load audio
             audio, sr = sf.read(input_path)
             
+            model_sr = config['data']['sample_rate']
+            
             # Transpose if needed: soundfile loads as (samples, channels)
             if audio.ndim == 2:
                 audio = audio.T  # Convert to (channels, samples)
+                
+            if sr != model_sr:
+                audio = librosa.resample(audio, sr, model_sr)
             
             # Process through generator
             output_audio = process_audio(config, audio, generator, device=args.device)
+            
+            if sr != model_sr:
+                output_audio = librosa.resample(output_audio, model_sr, sr)
             
             # Transpose back for saving: (channels, samples) -> (samples, channels)
             if output_audio.ndim == 2:
@@ -164,10 +178,28 @@ def main():
             
             # Save with same filename
             output_path = output_dir / ((audio_file.stem + postfix) + audio_file.suffix)
+            
             sf.write(output_path, output_audio, sr)
             input_path = output_path
     
     print(f"\nProcessing complete! Output saved to {output_dir}")
+    
+    if args.eval:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        program2_path = os.path.join(current_dir, "eval_plus.py")
+        
+        cmd = [sys.executable, program2_path]
+        arg_eval = {
+            '--target_dir': f"../../data/MSRBench/{instrument}/target/",
+            '--output_dir': args.output_dir,
+            '--target_index': args.target_index,
+        }
+        for key, value in arg_eval.items():
+            if value is None:
+                continue
+            cmd.extend([key, str(value)])
+        
+        subprocess.run(cmd)
 
 
 if __name__ == '__main__':
