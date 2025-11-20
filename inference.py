@@ -1,8 +1,10 @@
 import argparse
 from collections import OrderedDict
 import copy
+import glob
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Dict, Any, Tuple
@@ -97,6 +99,7 @@ def main():
     parser.add_argument("--checkpoint_post", '-P', type=str, help="post-processing model checkpoint (.ckpt)")
     parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input .flac files")
     parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio")
+    parser.add_argument("--instrument", type=str, help="Instrument to process (Vox/Gtr/Kbs/Synth/Bass/Rhy_DK/Rhy_PERC/Orch)")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
     parser.add_argument("--no-eval", action="store_false", dest="eval", help="Skip evaluation after inference")
     parser.add_argument("--target_index", type=str, help="Index of target audio files, e.g. '11|12'")
@@ -107,7 +110,7 @@ def main():
     project_name = config['project_name']
     exp_name = config['exp_name']
     step = Path(args.checkpoint).stem
-    instrument = RAWSTEMS_TO_MSRBENCH[config['data']['val_dataset']['target_stem']].capitalize()
+    instrument = RAWSTEMS_TO_MSRBENCH[config['data']['val_dataset']['target_stem']].capitalize() if args.instrument is None else args.instrument.capitalize()
     print(f"Project: {project_name}, Exp: {exp_name}, Step: {step}, Instrument: {instrument}")
     
     if not args.input_dir:
@@ -124,6 +127,12 @@ def main():
     
     # Get all audio files
     audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav"))
+    if args.target_index is not None:
+        regex = re.compile(rf"^\d+_DT({args.target_index})\.\w+$")
+    else:
+        regex = re.compile(rf"^\d+_DT\d+\.\w+$")
+    audio_files = [f for f in audio_files if regex.match(os.path.basename(f))]
+    audio_files.sort()
     
     if len(audio_files) == 0:
         print(f"No .flac or .wav files found in {input_dir}")

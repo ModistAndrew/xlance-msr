@@ -155,7 +155,9 @@ def find_matching_pairs(target_dir, output_dir, target_index):
         matching_outputs = glob.glob(output_pattern)
         if target_index is not None:
             regex = re.compile(rf"^{re.escape(target_id)}_DT({target_index})\.\w+$")
-            matching_outputs = [f for f in matching_outputs if regex.match(os.path.basename(f))]
+        else:
+            regex = re.compile(rf"^{re.escape(target_id)}_DT\d+\.\w+$")
+        matching_outputs = [f for f in matching_outputs if regex.match(os.path.basename(f))]
         matching_outputs.sort()
         
         if matching_outputs:
