@@ -1,5 +1,5 @@
 project_name: "bsmoise"
-exp_name: "syn_mix_large"
+exp_name: "syn_mix_large_random"
 
 model:
   name: "BSRoFormer"
@@ -107,11 +107,13 @@ data:
     apply_augmentation: False
     snr_range: [0.0, 10.0]
     moisesdb: True
+    random_mixture: True
   train_dataset1:
     target_stem: "Synth"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
     apply_augmentation: False
     snr_range: [0.0, 10.0]
+    random_mixture: True
   val_dataset:
     target_stem: "Synth"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"

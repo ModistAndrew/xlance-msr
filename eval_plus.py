@@ -277,7 +277,15 @@ def main():
         if target_wav is None or output_wav is None:
             raise Exception(f"Skipping, waveform not loaded: {target_path} -> {output_path}")
         if target_wav.shape[0] != output_wav.shape[0]:
-            raise Exception(f"Skipping, shape mismatch: {target_path} -> {output_path}")
+            print(f"Warning: shape mismatch: {target_path} -> {output_path}")
+            if target_wav.shape[0] not in [1, 2]:
+                raise Exception(f"Skipping, unsupported shape: {target_path} -> {output_path}")
+            if output_wav.shape[0] not in [1, 2]:
+                raise Exception(f"Skipping, unsupported shape: {target_path} -> {output_path}")
+            if target_wav.shape[0] > output_wav.shape[0]: # 2 vs 1
+                output_wav = output_wav.repeat(2, 1)
+            else: # 1 vs 2
+                output_wav = output_wav.mean(dim=0, keepdim=True)
         min_len = min(target_wav.shape[-1], output_wav.shape[-1])
         target_wav = target_wav[..., :min_len]
         output_wav = output_wav[..., :min_len]

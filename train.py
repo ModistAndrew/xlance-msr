@@ -15,6 +15,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from data.dataset import RawStems, InfiniteSampler
 from models import MelRNN, MelRoFormer, UNet, UFormer
 from models.bs_roformer import bs_roformer as BSRoformer
+from models.bs_roformer import mel_band_roformer as MelBandRoformer
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
 
@@ -34,6 +35,8 @@ def init_generator(model_cfg):
         return UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
     elif model_cfg['name'] == 'BSRoFormer':
         return BSRoformer.BSRoformer(**model_cfg['params'])
+    elif model_cfg['name'] == 'MelBandRoformer':
+        return MelBandRoformer.MelBandRoformer(**model_cfg['params'])
     else:
         raise ValueError(f"Unknown model name: {model_cfg['name']}")
     
@@ -117,8 +120,8 @@ class MusicRestorationModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters(config)
         self.automatic_optimization = False # Needed for GANs
-        self.use_channel = self.hparams.model['name'] in ['BSRoFormer', 'UFormer']
-        self.model_output_loss = self.hparams.model['name'] == 'BSRoFormer'
+        self.use_channel = self.hparams.model['name'] in ['BSRoFormer', 'MelBandRoformer', 'UFormer']
+        self.model_output_loss = self.hparams.model['name'] in ['BSRoFormer', 'MelBandRoformer']
 
         # 1. Generator
         self.generator = init_generator(self.hparams.model)
@@ -173,9 +176,10 @@ class MusicRestorationModule(pl.LightningModule):
                     raise ValueError(f"Unexpected key {key} in state dict")
                 print(f"Loaded roformer checkpoint from {path}")
             elif len(components) == 2:
+                print(full_checkpoint.keys())
                 instrument = components[1]
                 generator_state_dict = OrderedDict()
-                instrument_index = {'bass': 0, 'drums': 1, 'perc': 1, 'syn': 2, 'orch': 2, 'vox': 3, 'gtr': 4, 'key': 5}
+                instrument_index = {'bass': 0, 'drums': 1, 'perc': 1, 'syn': 2, 'orch': 2, 'vox': 3, 'gtr': 4, 'key': 5, 'noreverb': 0}
                 target_prefix = f'mask_estimators.{instrument_index[instrument]}' 
                 new_prefix = 'mask_estimators.0'
                 filtered_prefix = 'mask_estimators.'

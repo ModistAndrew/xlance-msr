@@ -63,8 +63,8 @@ def load_generator(config: Dict[str, Any], state_dict: Dict[str, Any], device: s
 
 
 def process_audio(config, audio: np.ndarray, generator: nn.Module, device: str = 'cuda') -> np.ndarray:
-    use_channel = config['model']['name'] in ['BSRoFormer', 'UFormer']
-    use_16_mix = config['model']['name'] == 'BSRoFormer'
+    use_channel = config['model']['name'] in ['BSRoFormer', 'UFormer', 'MelBandRoformer']
+    use_16_mix = config['model']['name'] in ['BSRoFormer', 'MelBandRoformer']
     """Process a single audio array through the generator."""
     # Convert to tensor: (channels, samples) -> (1, channels, samples)
     if audio.ndim == 1:

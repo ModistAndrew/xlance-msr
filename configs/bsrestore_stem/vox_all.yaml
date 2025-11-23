@@ -1,5 +1,5 @@
-project_name: "bsmoise"
-exp_name: "perc_mix_large_random"
+project_name: "bsrestore_stem"
+exp_name: "vox_all"
 
 model:
   name: "BSRoFormer"
@@ -100,28 +100,24 @@ model:
 
 data:
   sample_rate: 48000
-  clip_duration: 10.0
+  clip_duration: 3.0
   train_dataset:
-    target_stem: "perc"
-    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
-    apply_augmentation: False
-    snr_range: [0.0, 10.0]
-    moisesdb: True
-    random_mixture: True
-  train_dataset1:
-    target_stem: "Rhy_PERC"
+    target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
-    apply_augmentation: False
+    apply_augmentation: True
+    also_apply_mixture_augmentation: False
     snr_range: [0.0, 10.0]
-    random_mixture: True
+    no_mixture_all: True
   val_dataset:
-    target_stem: "Rhy_PERC"
+    target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
-    apply_augmentation: False
+    apply_augmentation: True
+    also_apply_mixture_augmentation: False
     snr_range: [0.0, 10.0]
+    no_mixture_all: True
   dataloader_params:
     batch_size: 4
-    num_workers: 32
+    num_workers: 8
 
 optimizer_g:
   lr: 0.0005
