@@ -146,6 +146,7 @@ class MusicRestorationModule(pl.LightningModule):
             self.loss_disc_adv = DiscriminatorLoss(gan_type=loss_cfg.get('gan_type', 'lsgan'))
             self.loss_feat = FeatureMatchingLoss()
             self.loss_recon = MultiMelSpecReconstructionLoss(**loss_cfg['reconstruction_loss'])
+            self.spec_ratio = loss_cfg['spec_ratio']
         self.l1_loss = nn.L1Loss()
         
     def load_generator_state_dict(self) -> Any:
@@ -179,7 +180,7 @@ class MusicRestorationModule(pl.LightningModule):
                 print(full_checkpoint.keys())
                 instrument = components[1]
                 generator_state_dict = OrderedDict()
-                instrument_index = {'bass': 0, 'drums': 1, 'perc': 1, 'syn': 2, 'orch': 2, 'vox': 3, 'gtr': 4, 'key': 5, 'noreverb': 0}
+                instrument_index = {'bass': 0, 'drums': 1, 'perc': 1, 'syn': 2, 'orch': 2, 'vox': 3, 'gtr': 4, 'key': 5, 'target': 0}
                 target_prefix = f'mask_estimators.{instrument_index[instrument]}' 
                 new_prefix = 'mask_estimators.0'
                 filtered_prefix = 'mask_estimators.'
@@ -244,7 +245,7 @@ class MusicRestorationModule(pl.LightningModule):
         fake_scores, fake_fmaps = self.discriminator(generated.unsqueeze(1))
         
         # Reconstruction Loss
-        loss_recon = self.loss_recon(generated, target)
+        loss_recon = self.loss_recon(generated, target) * self.spec_ratio + self.l1_loss(generated, target)
         
         # Adversarial Loss
         loss_adv, _ = self.loss_gen_adv(fake_scores)
@@ -290,7 +291,7 @@ class MusicRestorationModule(pl.LightningModule):
                 mixture = rearrange(mixture, 'b c t -> (b c) t')
                 generated = rearrange(generated, 'b c t -> (b c) t')
         
-        loss_recon = self.loss_recon(generated, target)
+        loss_recon = self.loss_recon(generated, target) * self.spec_ratio + self.l1_loss(generated, target)
         
         with torch.no_grad():
             fake_scores, fake_fmaps = self.discriminator(generated.unsqueeze(1))

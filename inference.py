@@ -130,7 +130,7 @@ def main():
     if args.target_index is not None:
         regex = re.compile(rf"^\d+_DT({args.target_index})\.\w+$")
     else:
-        regex = re.compile(rf"^\d+_DT\d+\.\w+$")
+        regex = re.compile(rf"^.*\.\w+$")
     audio_files = [f for f in audio_files if regex.match(os.path.basename(f))]
     audio_files.sort()
     

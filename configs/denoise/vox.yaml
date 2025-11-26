@@ -1,4 +1,4 @@
-project_name: "dereverb"
+project_name: "denoise"
 exp_name: "vox"
 
 model:
@@ -67,5 +67,5 @@ trainer:
   save_dir: logs/
 
 checkpoint:
-  path: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/jinxuanzhu/MSRKit/checkpoints/dereverb_mel_band_roformer_mono_anvuew_sdr_20.4029.ckpt"
+  path: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/jinxuanzhu/MSRKit/checkpoints/denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt"
   type: "roformer_target_frozenall"

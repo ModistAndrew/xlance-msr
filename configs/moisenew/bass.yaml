@@ -1,5 +1,5 @@
 project_name: "moisenew"
-exp_name: "bass_mix"
+exp_name: "bass"
 
 model:
   name: "BSRoFormer"
@@ -107,11 +107,6 @@ data:
     apply_augmentation: False
     snr_range: [0.0, 10.0]
     moisesdb: True
-  train_dataset1:
-    target_stem: "Bass"
-    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
-    apply_augmentation: False
-    snr_range: [0.0, 10.0]
   val_dataset:
     target_stem: "Bass"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"

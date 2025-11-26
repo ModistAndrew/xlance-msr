@@ -1,5 +1,5 @@
-project_name: "moisenew"
-exp_name: "bass_mix"
+project_name: "bsrestore_mix"
+exp_name: "vox_codec_mix"
 
 model:
   name: "BSRoFormer"
@@ -85,7 +85,7 @@ model:
     stft_win_length: 2048
     stft_normalized: false
     mask_estimator_depth: 2
-    multi_stft_resolution_loss_weight: 1.0
+    multi_stft_resolution_loss_weight: 0.25
     multi_stft_resolutions_window_sizes: !!python/tuple
     - 4096
     - 2048
@@ -100,26 +100,29 @@ model:
 
 data:
   sample_rate: 48000
-  clip_duration: 3.0
+  clip_duration: 10.0
   train_dataset:
-    target_stem: "bass"
-    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
-    apply_augmentation: False
-    snr_range: [0.0, 10.0]
-    moisesdb: True
-  train_dataset1:
-    target_stem: "Bass"
+    target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems"
-    apply_augmentation: False
+    apply_augmentation: True
     snr_range: [0.0, 10.0]
+    output_mixture: True
+  train_dataset1:
+    target_stem: "vox"
+    root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
+    apply_augmentation: True
+    snr_range: [0.0, 10.0]
+    output_mixture: True
+    moisesdb: True
   val_dataset:
-    target_stem: "Bass"
+    target_stem: "Voc"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/RawStems_valid"
-    apply_augmentation: False
+    apply_augmentation: True
     snr_range: [0.0, 10.0]
+    output_mixture: True
   dataloader_params:
     batch_size: 4
-    num_workers: 8
+    num_workers: 32
 
 optimizer_g:
   lr: 0.0005
