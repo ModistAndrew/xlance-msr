@@ -1,5 +1,5 @@
 project_name: "moisenew"
-exp_name: "bass"
+exp_name: "bass_large"
 
 model:
   name: "BSRoFormer"
@@ -100,7 +100,7 @@ model:
 
 data:
   sample_rate: 48000
-  clip_duration: 3.0
+  clip_duration: 10.0
   train_dataset:
     target_stem: "bass"
     root_directory: "/inspire/hdd/project/multilingualspeechrecognition/chenxie-25019/data/moisesdb_raw"
@@ -114,7 +114,7 @@ data:
     snr_range: [0.0, 10.0]
   dataloader_params:
     batch_size: 4
-    num_workers: 8
+    num_workers: 32
 
 optimizer_g:
   lr: 0.0005
