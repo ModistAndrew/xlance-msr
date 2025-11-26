@@ -107,11 +107,14 @@ TARGET_STEM_MAPPING = {
         ("guitar", "clean_electric_guitar"), 
         ("guitar", "distorted_electric_guitar"), 
         ("guitar", "lap_steel_guitar_or_slide_guitar"), 
-        ("guitar", "acoustic_guitar")
+        ("guitar", "acoustic_guitar"),
+        ("other_plucked", "banjo_mandolin_ukulele_harp_etc")
     ],
     "key": [
         ("piano", "grand_piano"), 
-        ("piano", "electric_piano_rhodes_wurlitzer_piano_sound_alike")
+        ("piano", "electric_piano_rhodes_wurlitzer_piano_sound_alike"),
+        ("other_keys", "organ_electric_organ"),
+        ("other_keys", "other_sounds_hapischord_melotron_etc"),
     ],
     "perc": [
         ("percussion", "a_tonal_percussion_claps_shakers_congas_cowbell_etc"), 
@@ -122,6 +125,7 @@ TARGET_STEM_MAPPING = {
         ("other_keys", "synth_lead")
     ],
     "orch": [
+        ("bowed_strings", "violin_solo"),
         ("bowed_strings", "viola_solo"),
         ("bowed_strings", "cello_solo"), 
         ("bowed_strings", "violin_section"),
@@ -130,19 +134,15 @@ TARGET_STEM_MAPPING = {
         ("bowed_strings", "string_section"),
         ("wind", "brass_trumpet_trombone_french_horn_brass_etc"),
         ("wind", "flutes_piccolo_bamboo_flute_panpipes_flutes_etc"),
-        ("wind", "reeds_saxophone_clarinets_oboe_english_horn_bagpipe")
+        ("wind", "reeds_saxophone_clarinets_oboe_english_horn_bagpipe"),
+        ("bowed_strings", "other_strings"),
+        ("wind", "other_wind")
     ],
     "other": [
         ("vocals", "other_vocoder_beatboxing_etc"),
-        ("bowed_strings", "violin_solo"),
         ("drums", "drum_machine"),
         ("other", "fx_processed_sound_scratches_gun_shots_explosions_etc"),
-        ("other", "click_track"),
-        ("other_plucked", "banjo_mandolin_ukulele_harp_etc"),
-        ("other_keys", "organ_electric_organ"),
-        ("other_keys", "other_sounds_hapischord_melotron_etc"),
-        ("bowed_strings", "other_strings"),
-        ("wind", "other_wind")
+        ("other", "click_track")
     ]
 }
 

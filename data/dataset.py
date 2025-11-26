@@ -103,7 +103,7 @@ class RawStems(Dataset):
         if moisesdb:
             self.target_stems = get_target_stem_pairs(target_stem)
             self.allowed_others = ["vocals", "bass", "drums", "guitar", "other_plucked", "percussion", "piano", "other_keys", "bowed_strings", "wind", "other"]
-            self.banned_others = get_banned_other_pairs(target_stem)
+            self.banned_others = []
         else:
             target_stem_parts = target_stem.split("_")
             target_stem_1 = target_stem_parts[0].strip()
