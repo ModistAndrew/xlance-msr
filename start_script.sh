@@ -60,9 +60,9 @@ python inference.py \
 --instrument vox
 
 python inference.py \
--c logs/bsmoise/orch_mix_large_random/checkpoints/00250000.ckpt \
--i output/sw/orch_00000010 \
--o output/bsmoise_seq/orch_mix_large_random_00250000 \
+-c logs/moisenew/bass_mix_large/checkpoints/00170000.ckpt \
+-i output/sw/bass_00000010 \
+-o output/moisenew_seq/bass_mix_large_00170000 \
 --target_index '0'
 
 python inference.py \
@@ -92,3 +92,5 @@ python inference.py \
 --no-eval
 
 python inference.py -c logs/bsrestore_mix/vox_codec_large/checkpoints/00050000.ckpt -P logs/sw/vox/checkpoints/00000010.ckpt
+
+python ans.py -i OrganizersMixture/Vocals/ -o Answer/Vocals/ans --instrument vox
