@@ -130,17 +130,7 @@ def calculate_rms(audio):
     rms_db = 20 * np.log10(rms + 1e-10)
     return rms_db
 
-def main():
-    parser = argparse.ArgumentParser(description="Run inference on audio files using trained generator")
-    parser.add_argument("--checkpoint", '-c', nargs='*', default=[], type=str, help="model checkpoint (.ckpt)")
-    parser.add_argument("--checkpoint_pre", '-p', nargs='*', default=[], type=str, help="pre-processing model checkpoint (.ckpt)")
-    parser.add_argument("--checkpoint_post", '-P', nargs='*', default=[], type=str, help="post-processing model checkpoint (.ckpt)")
-    parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input files, or a single audio file")
-    parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio, or a single audio file name")
-    parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size for inference")
-    args = parser.parse_args()
-    
+def inference_main(args):
     pre_models = load_models(args.checkpoint_pre, args.device)
     mss_models = load_models(args.checkpoint, args.device)
     post_models = load_models(args.checkpoint_post, args.device)
@@ -177,10 +167,19 @@ def main():
         output_path = output_dir / audio_file.name if output_dir.is_dir() else output_dir
         save_audio(audio, sr, output_path)
         print("Final result saved to:", output_path)
-
+        
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description="Run inference on audio files using trained generator")
+    parser.add_argument("--checkpoint", '-c', nargs='*', default=[], type=str, help="model checkpoint (.ckpt)")
+    parser.add_argument("--checkpoint_pre", '-p', nargs='*', default=[], type=str, help="pre-processing model checkpoint (.ckpt)")
+    parser.add_argument("--checkpoint_post", '-P', nargs='*', default=[], type=str, help="post-processing model checkpoint (.ckpt)")
+    parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input files, or a single audio file")
+    parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio, or a single audio file name")
+    parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size for inference")
+    args = parser.parse_args()
+    inference_main(args)
 
 
 

@@ -16,8 +16,8 @@ license: mit
 
 - XLANCELAB's system submitted to the [Music Source Restoration (MSR) Challenge 2025](https://msrchallenge.com/), which achieved top rank in nearly every stem category.
 
-- See system_card.md for implementation overview or our paper for more information.
+- See [system_card.md](system_card.md) for implementation overview or our paper for more information.
 
-- See start_script.sh for training and inference commands or our huggingface space for a simple demo.
+- See [start_script.sh](start_script.sh) for training and inference commands or our huggingface space for a simple demo.
 
 - This repo is based on [MSRKit](https://github.com/yongyizang/MSRKit). You may refer to it for more details.
