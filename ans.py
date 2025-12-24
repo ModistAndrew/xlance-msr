@@ -7,21 +7,21 @@ import soundfile as sf
 from inference import load_config_and_state_dict, load_generator, process_audio
 
 MSS_MODEL_PATHS = {
-    'vox': ['logs/sw/vox/checkpoints/00000010.ckpt'],
-    'gtr': ['logs/sw/gtr/checkpoints/00000010.ckpt'],
-    'key': ['logs/sw/key/checkpoints/00000010.ckpt'],
-    'syn': ['logs/sw/syn/checkpoints/00000010.ckpt', 'logs/bsmoise/syn_mix_large/checkpoints/00240000.ckpt'],
-    'bass': ['logs/sw/bass/checkpoints/00000010.ckpt'],
-    'drums': ['logs/sw/drums/checkpoints/00000010.ckpt', 'logs/bsmoise/drums_mix_large_random/checkpoints/00630000.ckpt'],
-    'perc': ['logs/sw/perc/checkpoints/00000010.ckpt', 'logs/bsmoise/perc_mix_large/checkpoints/00240000.ckpt'],
-    'orch': ['logs/sw/orch/checkpoints/00000010.ckpt', 'logs/moisenew/orch_mix_large/checkpoints/00170000.ckpt'],
+    'vox': ['checkpoints/vox_mss.ckpt'],
+    'gtr': ['checkpoints/gtr_mss.ckpt'],
+    'key': ['checkpoints/key_mss.ckpt'],
+    'syn': ['checkpoints/syn_mss.ckpt', 'checkpoints/syn_mss1.ckpt'],
+    'bass': ['checkpoints/bass_mss.ckpt'],
+    'drums': ['checkpoints/drums_mss.ckpt', 'checkpoints/drums_mss1.ckpt'],
+    'perc': ['checkpoints/perc_mss.ckpt', 'checkpoints/perc_mss1.ckpt'],
+    'orch': ['checkpoints/orch_mss.ckpt', 'checkpoints/orch_mss1.ckpt'],
 }
 MSS_MODELS = {key: [] for key in MSS_MODEL_PATHS.keys()}
 
-PRE_MODEL_PATHS = {'vox': ['logs/denoise/vox/checkpoints/00000010.ckpt']}
+PRE_MODEL_PATHS = {'vox': ['checkpoints/denoise.ckpt']}
 PRE_MODELS = {key: [] for key in PRE_MODEL_PATHS.keys()}
     
-POST_MODEL_PATHS = {key: ['logs/dereverb/vox/checkpoints/00000010.ckpt'] if key in ['vox'] else [] for key in MSS_MODEL_PATHS.keys()}
+POST_MODEL_PATHS = {key: ['checkpoints/dereverb.ckpt'] if key in ['vox'] else [] for key in MSS_MODEL_PATHS.keys()}
 POST_MODELS = {key: [] for key in POST_MODEL_PATHS.keys()}
 
 OUTPUT_PATHS = {

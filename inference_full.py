@@ -137,7 +137,6 @@ def inference_main(args):
     
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
     
     if input_dir.is_dir():
         # Get all audio files
@@ -164,7 +163,7 @@ def inference_main(args):
         else:
             audio = audio_dereverb
             
-        output_path = output_dir / audio_file.name if output_dir.is_dir() else output_dir
+        output_path = output_dir / audio_file.name if input_dir.is_dir() else output_dir # corresponding to input_dir.is_dir()
         save_audio(audio, sr, output_path)
         print("Final result saved to:", output_path)
         
