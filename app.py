@@ -2,6 +2,7 @@ import os
 import torch
 import gradio as gr
 import tempfile
+import spaces
 from inference_full import inference_main
 from huggingface_hub import hf_hub_download
 
