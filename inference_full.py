@@ -135,8 +135,8 @@ def main():
     parser.add_argument("--checkpoint", '-c', nargs='*', default=[], type=str, help="model checkpoint (.ckpt)")
     parser.add_argument("--checkpoint_pre", '-p', nargs='*', default=[], type=str, help="pre-processing model checkpoint (.ckpt)")
     parser.add_argument("--checkpoint_post", '-P', nargs='*', default=[], type=str, help="post-processing model checkpoint (.ckpt)")
-    parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input files")
-    parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio")
+    parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input files, or a single audio file")
+    parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio, or a single audio file name")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for inference")
     args = parser.parse_args()
@@ -149,27 +149,23 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Get all audio files
-    audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav")) + sorted(input_dir.glob("*.mp3"))
-    print(f"Found {len(audio_files)} audio files")
+    if input_dir.is_dir():
+        # Get all audio files
+        audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav")) + sorted(input_dir.glob("*.mp3"))
+        print(f"Found {len(audio_files)} audio files")
+    else:
+        audio_files = [input_dir]
     
     for audio_file in tqdm(audio_files, desc="Processing audio files"):
         audio, sr = load_audio(audio_file)
         print("Processing audio file:", audio_file)
         
-        output_path= output_dir / ((audio_file.stem + "_denoised") + audio_file.suffix)
         audio = inference(pre_models, audio, sr, batch_size=args.batch_size)
-        save_audio(audio, sr, output_path)
-        print("Denoised audio saved to:", output_path)
         
-        output_path = output_dir / ((audio_file.stem + "_mssed") + audio_file.suffix)
         audio = inference(mss_models, audio, sr, batch_size=args.batch_size)
         rms = calculate_rms(audio)
         print("RMS of MSS audio:", rms)
-        save_audio(audio, sr, output_path)
-        print("MSS audio saved to:", output_path)
         
-        output_path = output_dir / ((audio_file.stem + "_dereverbed") + audio_file.suffix)
         audio_dereverb = inference(post_models, audio, sr, batch_size=args.batch_size)
         rms_dereverb = calculate_rms(audio_dereverb)
         print("RMS of dereverbed audio:", rms_dereverb)
@@ -177,10 +173,10 @@ def main():
             print("Dereverb audio is too quiet, use original")
         else:
             audio = audio_dereverb
+            
+        output_path = output_dir / audio_file.name if output_dir.is_dir() else output_dir
         save_audio(audio, sr, output_path)
-        print("Dereverb audio saved to:", output_path)
-        save_audio(audio, sr, output_dir / audio_file.name)
-        print("Final result saved to:", output_dir / audio_file.name)
+        print("Final result saved to:", output_path)
 
 
 if __name__ == '__main__':
