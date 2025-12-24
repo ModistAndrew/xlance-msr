@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import soundfile as sf
 import librosa
+import torch.nn.functional as F
 
 from torch.utils.data._utils.collate import default_collate
 from tqdm import tqdm
@@ -25,7 +26,7 @@ def demix_single(
                 with torch.no_grad():
                     output = model(mix)
     output = output.cpu()
-    return output
+    return F.pad(output, (0, mix.shape[-1]-output.shape[-1]), mode='constant', value=0)
 
 def split_audio(
     audio: np.ndarray,
