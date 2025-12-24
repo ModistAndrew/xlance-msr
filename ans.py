@@ -25,14 +25,14 @@ POST_MODEL_PATHS = {key: ['logs/dereverb/vox/checkpoints/00000010.ckpt'] if key 
 POST_MODELS = {key: [] for key in POST_MODEL_PATHS.keys()}
 
 OUTPUT_PATHS = {
-    'vox': Path('xlancelab2/Vocals'),
-    'gtr': Path('xlancelab2/Guitars'),
-    'key': Path('xlancelab2/Keyboards'),
-    'syn': Path('xlancelab2/Synthesizers'),
-    'bass': Path('xlancelab2/Bass'),
-    'drums': Path('xlancelab2/Drums'),
-    'perc': Path('xlancelab2/Percussions'),
-    'orch': Path('xlancelab2/Orchestral Elements'),
+    'vox': Path('xlancelab/Vocals'),
+    'gtr': Path('xlancelab/Guitars'),
+    'key': Path('xlancelab/Keyboards'),
+    'syn': Path('xlancelab/Synthesizers'),
+    'bass': Path('xlancelab/Bass'),
+    'drums': Path('xlancelab/Drums'),
+    'perc': Path('xlancelab/Percussions'),
+    'orch': Path('xlancelab/Orchestral Elements'),
 }
 
 def load_models(dict, target_dict, device='cuda'):
@@ -76,7 +76,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run inference on audio files using trained generator")
     parser.add_argument("--input_dir", '-i', type=str, required=True, help="Directory containing input .flac files")
     parser.add_argument("--output_dir", '-o', type=str, required=True, help="Directory to save processed audio")
-    parser.add_argument("--instrument", type=str, required=True, help="Instrument to process (Vox/Gtr/Kbs/Synth/Bass/Rhy_DK/Rhy_PERC/Orch)")
+    parser.add_argument("--instrument", type=str, required=True, help="Instrument to process (bass/drums/gtr/key/orch/perc/syn/vox)")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
     args = parser.parse_args()
     
@@ -91,7 +91,7 @@ def main():
     OUTPUT_PATHS[args.instrument].mkdir(parents=True, exist_ok=True)
     
     # Get all audio files
-    audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav"))
+    audio_files = sorted(input_dir.glob("*.flac")) + sorted(input_dir.glob("*.wav")) + sorted(input_dir.glob("*.mp3"))
     print(f"Found {len(audio_files)} audio files")
     
     for audio_file in tqdm(audio_files, desc="Processing audio files"):
