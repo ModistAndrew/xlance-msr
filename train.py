@@ -13,9 +13,6 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 
 from data.dataset import RawStems, InfiniteSampler
-from models import MelRNN, MelRoFormer, UNet, UFormer
-from models.bs_roformer import bs_roformer as BSRoformer
-from models.bs_roformer import mel_band_roformer as MelBandRoformer
 from losses.gan_loss import GeneratorLoss, DiscriminatorLoss, FeatureMatchingLoss
 from losses.reconstruction_loss import MultiMelSpecReconstructionLoss
 
@@ -24,30 +21,7 @@ from modules.discriminator.MultiScaleDiscriminator import MultiScaleDiscriminato
 from modules.discriminator.MultiFrequencyDiscriminator import MultiFrequencyDiscriminator
 from modules.discriminator.MultiResolutionDiscriminator import MultiResolutionDiscriminator
 
-def init_generator(model_cfg):
-    if model_cfg['name'] == 'MelRNN':
-        return MelRNN.MelRNN(**model_cfg['params'])
-    elif model_cfg['name'] == 'MelRoFormer':
-        return MelRoFormer.MelRoFormer(**model_cfg['params'])
-    elif model_cfg['name'] == 'MelUNet':
-        return UNet.MelUNet(**model_cfg['params'])
-    elif model_cfg['name'] == 'UFormer':
-        return UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
-    elif model_cfg['name'] == 'BSRoFormer':
-        return BSRoformer.BSRoformer(**model_cfg['params'])
-    elif model_cfg['name'] == 'MelBandRoformer':
-        return MelBandRoformer.MelBandRoformer(**model_cfg['params'])
-    else:
-        raise ValueError(f"Unknown model name: {model_cfg['name']}")
-    
-class RoformerSequential(nn.Sequential):
-    def __init__(self, *args):
-        super().__init__(*args)
-    
-    def forward(self, mixture, target=None):
-        for module in self[:-1]:
-            mixture = module(mixture) # only pass mixture
-        return self[-1](mixture, target) # also pass target if present
+from inference import init_generator, RoformerSequential
 
 class CombinedDiscriminator(nn.Module):
     """A wrapper to combine multiple discriminators into a single module."""    

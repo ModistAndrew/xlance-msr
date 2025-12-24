@@ -1,7 +1,6 @@
 import argparse
 from collections import OrderedDict
 import copy
-import glob
 import os
 from pathlib import Path
 import re
@@ -15,8 +14,9 @@ import soundfile as sf
 import numpy as np
 from tqdm import tqdm
 import librosa
-
-from train import init_generator, RoformerSequential
+from models import MelRNN, MelRoFormer, UNet, UFormer
+from models.bs_roformer import bs_roformer as BSRoformer
+from models.bs_roformer import mel_band_roformer as MelBandRoformer
 
 RAWSTEMS_TO_MSRBENCH = {
     'Voc': 'vox',
@@ -28,6 +28,31 @@ RAWSTEMS_TO_MSRBENCH = {
     'Rhy_PERC': 'perc',
     'Orch': 'orch',
 }
+
+def init_generator(model_cfg):
+    if model_cfg['name'] == 'MelRNN':
+        return MelRNN.MelRNN(**model_cfg['params'])
+    elif model_cfg['name'] == 'MelRoFormer':
+        return MelRoFormer.MelRoFormer(**model_cfg['params'])
+    elif model_cfg['name'] == 'MelUNet':
+        return UNet.MelUNet(**model_cfg['params'])
+    elif model_cfg['name'] == 'UFormer':
+        return UFormer.UFormer(UFormer.UFormerConfig(**model_cfg['params']))
+    elif model_cfg['name'] == 'BSRoFormer':
+        return BSRoformer.BSRoformer(**model_cfg['params'])
+    elif model_cfg['name'] == 'MelBandRoformer':
+        return MelBandRoformer.MelBandRoformer(**model_cfg['params'])
+    else:
+        raise ValueError(f"Unknown model name: {model_cfg['name']}")
+    
+class RoformerSequential(nn.Sequential):
+    def __init__(self, *args):
+        super().__init__(*args)
+    
+    def forward(self, mixture, target=None):
+        for module in self[:-1]:
+            mixture = module(mixture) # only pass mixture
+        return self[-1](mixture, target) # also pass target if present
 
 def load_config_and_state_dict(path: str, map_location: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if path.endswith('.pth'):

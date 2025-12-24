@@ -22,7 +22,7 @@ python ans.py -i OrganizersMixture/Vocals/ -o Answer/Vocals/ans --instrument vox
 
 # train (see the original MSRKit repo for more details)
 python train.py \
---config configs/melunet/bass.yaml
+--config configs/bsmoise/bass_mix_large.yaml
 
 # the following commands are internal functions, just for reference
 
