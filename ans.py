@@ -7,21 +7,21 @@ import soundfile as sf
 from inference import load_config_and_state_dict, load_generator, process_audio
 
 MSS_MODEL_PATHS = {
-    'vox': ['checkpoints/vox_mss.ckpt'],
-    'gtr': ['checkpoints/gtr_mss.ckpt'],
-    'key': ['checkpoints/key_mss.ckpt'],
-    'syn': ['checkpoints/syn_mss.ckpt', 'checkpoints/syn_mss1.ckpt'],
-    'bass': ['checkpoints/bass_mss.ckpt'],
-    'drums': ['checkpoints/drums_mss.ckpt', 'checkpoints/drums_mss1.ckpt'],
-    'perc': ['checkpoints/perc_mss.ckpt', 'checkpoints/perc_mss1.ckpt'],
-    'orch': ['checkpoints/orch_mss.ckpt', 'checkpoints/orch_mss1.ckpt'],
+    'vox': ['checkpoints/vox_mss.pth'],
+    'gtr': ['checkpoints/gtr_mss.pth'],
+    'key': ['checkpoints/key_mss.pth'],
+    'syn': ['checkpoints/syn_mss.pth', 'checkpoints/syn_mss1.pth'],
+    'bass': ['checkpoints/bass_mss.pth'],
+    'drums': ['checkpoints/drums_mss.pth', 'checkpoints/drums_mss1.pth'],
+    'perc': ['checkpoints/perc_mss.pth', 'checkpoints/perc_mss1.pth'],
+    'orch': ['checkpoints/orch_mss.pth', 'checkpoints/orch_mss1.pth'],
 }
 MSS_MODELS = {key: [] for key in MSS_MODEL_PATHS.keys()}
 
-PRE_MODEL_PATHS = {'vox': ['checkpoints/denoise.ckpt']}
+PRE_MODEL_PATHS = {'vox': ['checkpoints/denoise.pth']}
 PRE_MODELS = {key: [] for key in PRE_MODEL_PATHS.keys()}
     
-POST_MODEL_PATHS = {key: ['checkpoints/dereverb.ckpt'] if key in ['vox'] else [] for key in MSS_MODEL_PATHS.keys()}
+POST_MODEL_PATHS = {key: ['checkpoints/dereverb.pth'] if key in ['vox'] else [] for key in MSS_MODEL_PATHS.keys()}
 POST_MODELS = {key: [] for key in POST_MODEL_PATHS.keys()}
 
 OUTPUT_PATHS = {

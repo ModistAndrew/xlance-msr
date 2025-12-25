@@ -14,6 +14,7 @@ import soundfile as sf
 import numpy as np
 from tqdm import tqdm
 import librosa
+import yaml
 from models import MelRNN, MelRoFormer, UNet, UFormer
 from models.bs_roformer import bs_roformer as BSRoformer
 from models.bs_roformer import mel_band_roformer as MelBandRoformer
@@ -55,9 +56,14 @@ class RoformerSequential(nn.Sequential):
         return self[-1](mixture, target) # also pass target if present
 
 def load_config_and_state_dict(path: str, map_location: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    if path.endswith('.pth'):
-        raise ValueError("Use .ckpt files instead of .pth files")
     print(f"Extracting state dict from {path}")
+    if path.endswith('.pth'):
+        model_name = Path(path).stem
+        config_path = f"./configs/{model_name}.yaml" # use config file with same name as model in ./configs
+        print(f"Loading config from {config_path}")
+        with open(config_path, 'r') as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+        return config, torch.load(path, map_location=map_location)
     full_checkpoint = torch.load(path, map_location=map_location, weights_only=False)
     full_state_dict = full_checkpoint['state_dict']
     generator_state_dict = OrderedDict()
@@ -119,9 +125,9 @@ def process_audio(config, audio: np.ndarray, generator: nn.Module, device: str =
 
 def main():
     parser = argparse.ArgumentParser(description="Run inference on audio files using trained generator")
-    parser.add_argument("--checkpoint", '-c', type=str, required=True, help="Path to unwrapped generator weights (.ckpt)")
-    parser.add_argument("--checkpoint_pre", '-p', type=str, help="pre-processing model checkpoint (.ckpt)")
-    parser.add_argument("--checkpoint_post", '-P', type=str, help="post-processing model checkpoint (.ckpt)")
+    parser.add_argument("--checkpoint", '-c', type=str, required=True, help="Path to unwrapped generator weights (.ckpt or .pth)")
+    parser.add_argument("--checkpoint_pre", '-p', type=str, help="pre-processing model checkpoint (.ckpt or .pth)")
+    parser.add_argument("--checkpoint_post", '-P', type=str, help="post-processing model checkpoint (.ckpt or .pth)")
     parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input .flac files")
     parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio")
     parser.add_argument("--instrument", type=str, help="Instrument to process (Vox/Gtr/Kbs/Synth/Bass/Rhy_DK/Rhy_PERC/Orch)")

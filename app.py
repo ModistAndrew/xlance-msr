@@ -14,43 +14,43 @@ REPO_ID = os.getenv("MODEL_REPO_ID", "chenxie95/xlance-msr-ckpt")
 # Instrument to checkpoint mapping
 INSTRUMENT_MAP = {
     'vox': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['vox_mss.ckpt'],
-        'post': ['dereverb.ckpt']
+        'pre': ['denoise.pth'],
+        'mss': ['vox_mss.pth'],
+        'post': ['dereverb.pth']
     },
     'gtr': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['gtr_mss.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['gtr_mss.pth'],
         'post': []
     },
     'key': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['key_mss.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['key_mss.pth'],
         'post': []
     },
     'syn': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['syn_mss.ckpt', 'syn_mss1.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['syn_mss.pth', 'syn_mss1.pth'],
         'post': []
     },
     'bass': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['bass_mss.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['bass_mss.pth'],
         'post': []
     },
     'drums': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['drums_mss.ckpt', 'drums_mss1.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['drums_mss.pth', 'drums_mss1.pth'],
         'post': []
     },
     'perc': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['perc_mss.ckpt', 'perc_mss1.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['perc_mss.pth', 'perc_mss1.pth'],
         'post': []
     },
     'orch': {
-        'pre': ['denoise.ckpt'],
-        'mss': ['orch_mss.ckpt', 'orch_mss1.ckpt'],
+        'pre': ['denoise.pth'],
+        'mss': ['orch_mss.pth', 'orch_mss1.pth'],
         'post': []
     }
 }

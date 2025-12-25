@@ -1,8 +1,8 @@
 # inference_full (for inference on full audio)
 python inference_full.py \
--p checkpoints/denoise.ckpt \
--c checkpoints/vox_mss.ckpt \
--P checkpoints/dereverb.ckpt \ # only vox need it
+-p checkpoints/denoise.pth \
+-c checkpoints/vox_mss.pth \
+-P checkpoints/dereverb.pth \ # only vox need it
 -i test/input \
 -o test/output \
 --device cuda \
@@ -10,8 +10,8 @@ python inference_full.py \
 
 # another example (eight instruments are supported in total)
 python inference_full.py \
--p checkpoints/denoise.ckpt \
--c checkpoints/drums_mss.ckpt checkpoints/drums_mss1.ckpt \ # use multiple checkpoints for some instruments
+-p checkpoints/denoise.pth \
+-c checkpoints/drums_mss.pth checkpoints/drums_mss1.pth \ # use multiple checkpoints for some instruments
 -i test/input \
 -o test/output \
 --device cuda \
@@ -40,3 +40,6 @@ python inference.py \
 -i OrganizersMixture/Vocals \
 -o Answer/Vocals/default \
 --no-eval
+
+# unwrap
+python unwrap.py -i checkpoints/bass_mss.ckpt -o checkpoints/bass_mss.pth

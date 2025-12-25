@@ -171,9 +171,9 @@ def inference_main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run inference on audio files using trained generator")
-    parser.add_argument("--checkpoint", '-c', nargs='*', default=[], type=str, help="model checkpoint (.ckpt)")
-    parser.add_argument("--checkpoint_pre", '-p', nargs='*', default=[], type=str, help="pre-processing model checkpoint (.ckpt)")
-    parser.add_argument("--checkpoint_post", '-P', nargs='*', default=[], type=str, help="post-processing model checkpoint (.ckpt)")
+    parser.add_argument("--checkpoint", '-c', nargs='*', default=[], type=str, help="model checkpoint (.ckpt or .pth)")
+    parser.add_argument("--checkpoint_pre", '-p', nargs='*', default=[], type=str, help="pre-processing model checkpoint (.ckpt or .pth)")
+    parser.add_argument("--checkpoint_post", '-P', nargs='*', default=[], type=str, help="post-processing model checkpoint (.ckpt or .pth)")
     parser.add_argument("--input_dir", '-i', type=str, help="Directory containing input files, or a single audio file")
     parser.add_argument("--output_dir", '-o', type=str, help="Directory to save processed audio, or a single audio file name")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run inference on (cuda/cpu)")
