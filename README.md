@@ -1,14 +1,3 @@
----
-title: xlance-msr
-emoji: 🎵
-colorFrom: indigo
-colorTo: blue
-sdk: gradio
-sdk_version: "5.38.0"
-app_file: app.py
-python_version: "3.12.4"
-license: mit
----
 # xlance-msr
 <a href='https://github.com/ModistAndrew/xlance-msr'><img alt="Static Badge" src="https://img.shields.io/badge/github_repo-lightgrey?logo=github"></a>
 <a href='https://huggingface.co/spaces/chenxie95/xlance-msr'><img alt="Static Badge" src="https://img.shields.io/badge/huggingface_space-yellow?logo=huggingface"></a>
