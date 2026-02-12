@@ -9,7 +9,7 @@ PyYAML==6.0.2
 rotary_embedding_torch==0.3.5
 soundfile==0.13.1
 streamlit==1.48.0
-torch>=2.7.0
+torch~=2.7.0
 torchaudio>=2.7.0
 torchmetrics==0.11.4
 tqdm==4.66.4
