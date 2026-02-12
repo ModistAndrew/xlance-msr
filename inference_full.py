@@ -99,7 +99,7 @@ def inference(models, audio, sr, batch_size):
     for (config, model) in models:
         model_sr = config['data']['sample_rate']
         if sr != model_sr:
-            audio = librosa.resample(audio, sr, model_sr)
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=model_sr)
         audio = process_long_audio(model, audio, sr, chunk_duration=10.0, overlap=1.0, batch_size=batch_size)
         if sr != model_sr:
             audio = librosa.resample(audio, model_sr, sr)
@@ -118,8 +118,11 @@ def load_models(paths, device):
     return models
 
 def load_audio(input_path):
-    audio, sr = sf.read(input_path, always_2d=True)
-    audio = audio.T
+    audio, sr = sf.read(input_path)
+    if audio.ndim == 1: # mono audio, convert to stereo
+        audio = np.stack([audio, audio], axis=0)
+    else:
+        audio = audio.T
     return audio, sr
     
 def save_audio(audio, sr, output_path):
@@ -165,6 +168,10 @@ def inference_main(args):
             audio = audio_dereverb
             
         output_path = output_dir / audio_file.name if input_dir.is_dir() else output_dir # corresponding to input_dir.is_dir()
+        if input_dir.is_dir():
+            output_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
         save_audio(audio, sr, output_path)
         print("Final result saved to:", output_path)
         
