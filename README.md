@@ -1,7 +1,8 @@
 # xlance-msr
-<a href='https://github.com/ModistAndrew/xlance-msr'><img alt="Static Badge" src="https://img.shields.io/badge/github_repo-lightgrey?logo=github"></a>
-<a href='https://huggingface.co/spaces/chenxie95/xlance-msr'><img alt="Static Badge" src="https://img.shields.io/badge/huggingface_space-yellow?logo=huggingface"></a>
-<a href='https://arxiv.org/abs/114514'><img alt="Static Badge" src="https://img.shields.io/badge/WIP-%23b31b1b?logo=arxiv"></a>
+<a href='https://github.com/ModistAndrew/xlance-msr'><img alt="Static Badge" src="https://img.shields.io/badge/GitHub-lightgrey?logo=github"></a>
+<a href='https://huggingface.co/chenxie95/xlance-msr-ckpt'><img alt="Static Badge" src="https://img.shields.io/badge/Hugging_Face_Model-yellow?logo=huggingface"></a>
+<a href='https://huggingface.co/spaces/chenxie95/xlance-msr'><img alt="Static Badge" src="https://img.shields.io/badge/Hugging_Face_Space-yellow?logo=huggingface"></a>
+<a href='http://arxiv.org/abs/2602.09042'><img alt="Static Badge" src="https://img.shields.io/badge/arXiv-%23b31b1b?logo=arxiv"></a>
 
 - XLANCELAB's system submitted to the [Music Source Restoration (MSR) Challenge 2025](https://msrchallenge.com/), which achieved top rank in nearly every stem category.
 
